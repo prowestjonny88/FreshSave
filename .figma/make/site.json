@@ -1,0 +1,10 @@
+{
+  "description": "Discover and reserve discounted surplus groceries from nearby sellers, with clear pricing, expiry details, pickup information, and tools to manage listings and food rescue.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

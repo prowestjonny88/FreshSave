@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- figma:head-start -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FreshSave – Smart Food Expiry Tracker &amp; Food Rescue Marketplace</title>
+    <meta
+      name="description"
+      content="Discover and reserve discounted surplus groceries from nearby sellers, with clear pricing, expiry details, pickup information, and tools to manage listings and food rescue."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.png" />
+    <link rel="stylesheet" href="/css/global.css" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <!-- figma:head-end -->
+  </head>
+  <body>
+    <!-- figma:body-start -->
+    <div id="root">
+      <div id="auth-root" hidden></div>
+      <div class="app" id="app" hidden>
+        <header class="hdr" id="hdr">
+          <div class="hdr-top wrap">
+            <a class="logo" href="#/market" data-act="home" aria-label="FreshSave marketplace"
+              ><i><span data-icon="leaf"></span></i><span>Fresh<b>Save</b></span></a
+            >
+            <div class="searchbox" id="searchbox">
+              <form id="sform" role="search">
+                <span data-icon="search" data-icon-class="si"></span
+                ><input
+                  id="q"
+                  autocomplete="off"
+                  placeholder="Search for food near you..."
+                  aria-label="Search the marketplace"
+                /><button class="go" type="submit">Search</button>
+              </form>
+              <div class="sdrop" id="sdrop"></div>
+            </div>
+            <div class="locgrp">
+              <button
+                class="hbtn locbtn"
+                data-act="loc"
+                title="Your location (used for filtering only)"
+              >
+                <span data-icon="pin" data-icon-class="sm"></span
+                ><span class="lt"><small>Your location</small><span id="locName"></span></span
+                ><span data-icon="chevd" data-icon-class="xs"></span>
+              </button>
+              <select class="sel distsel" id="hdr-dist" aria-label="Distance">
+                <option value="2">Within 2 km</option>
+                <option value="5">Within 5 km</option>
+                <option value="10">Within 10 km</option>
+                <option value="all">Show all</option>
+              </select>
+            </div>
+            <div class="top-acts">
+              <a class="btn sell-btn" href="#/sell"
+                ><span data-icon="plus" data-icon-class="sm"></span><span>Sell</span></a
+              >
+              <button class="hbtn" data-act="inbox" title="Messages" aria-label="Messages">
+                <span data-icon="chat"></span><span class="dot" id="mBadge" hidden></span>
+              </button>
+              <div class="hwrap">
+                <button
+                  class="hbtn"
+                  data-act="npop"
+                  title="Notifications"
+                  aria-label="Notifications"
+                >
+                  <span data-icon="bell"></span><span class="dot" id="nBadge" hidden></span>
+                </button>
+                <div class="pop" id="npop"></div>
+              </div>
+              <div class="hwrap">
+                <button class="hbtn prof" data-act="mpop" aria-label="Account menu">
+                  <span class="avatar" id="topav"></span><span class="pname" id="pname"></span
+                  ><span data-icon="chevd" data-icon-class="xs"></span>
+                </button>
+                <div class="pop menu" id="mpop"></div>
+              </div>
+            </div>
+          </div>
+          <nav class="mnav" aria-label="Main navigation"><div class="wrap" id="nav"></div></nav>
+          <nav class="catbar" id="catbar" aria-label="Categories">
+            <div class="cats wrap" id="cats"></div>
+          </nav>
+        </header>
+        <main id="main"></main>
+        <footer class="foot">
+          <div class="wrap">
+            <span><b>FreshSave</b> · Smart Food Expiry Tracker &amp; Food Rescue Marketplace</span
+            ><span
+              >Reserve online · Pay in person · Collect at the seller's fixed location · No
+              delivery</span
+            >
+          </div>
+        </footer>
+      </div>
+      <div class="ov" id="ov">
+        <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+      </div>
+      <aside class="drawer" id="drawer" aria-label="Messages"></aside>
+      <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+    </div>
+    <script type="module" src="/src/app.js"></script>
+    <!-- figma:body-end -->
+  </body>
+</html>

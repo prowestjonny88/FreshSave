@@ -1,0 +1,76 @@
+/* ---------- Header: logo · search · location · actions, then navigation, then categories ---------- */
+.app{min-height:100vh;display:flex;flex-direction:column}
+.hdr{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid var(--line)}
+.hdr-top{display:flex;align-items:center;gap:16px;height:74px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:23px;letter-spacing:-.03em;flex:none}
+.logo i{width:32px;height:32px;border-radius:7px;display:grid;place-items:center;background:var(--coral);color:#fff}
+.logo i svg{width:19px;height:19px}
+.logo b{color:var(--coral);font-weight:800}
+.logo.inv{color:#fff}.logo.inv b{color:var(--yel)}.logo.inv i{background:#fff;color:var(--coral)}
+.searchbox{position:relative;flex:1 1 auto;min-width:200px;max-width:640px}
+.searchbox form{display:flex;border:2px solid var(--ink);border-radius:8px;background:#fff;height:48px;overflow:hidden}
+.searchbox form:focus-within{border-color:var(--coral)}
+.searchbox input{flex:1;border:0;background:none;padding:0 12px 0 44px;outline:0;min-width:0;font-size:15px}
+.searchbox .si{position:absolute;left:14px;top:14px;color:var(--mute);pointer-events:none;width:20px;height:20px}
+.searchbox button.go{background:var(--coral);color:#fff;padding:0 24px;font-weight:700;font-size:15px}
+.searchbox button.go:hover{background:var(--coral-d)}
+.sdrop{position:absolute;top:54px;left:0;right:0;background:#fff;border:1px solid var(--line2);border-radius:8px;box-shadow:0 8px 24px #00000018;padding:6px 0;display:none;z-index:70;max-height:70vh;overflow:auto}
+.sdrop.open{display:block}
+.sdrop h6{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);padding:10px 16px 4px;display:flex;justify-content:space-between}
+.sdrop h6 button{font-size:11px;text-transform:none;letter-spacing:0;color:var(--coral);font-weight:600}
+.sdrop .row{display:flex;gap:10px;align-items:center;width:100%;padding:8px 16px;text-align:left}
+.sdrop .row:hover{background:var(--bg2)}
+.sdrop .row img{width:36px;height:36px;border-radius:4px;object-fit:cover}
+.sdrop .row small{color:var(--mute);margin-left:auto;white-space:nowrap;padding-left:8px}
+.locgrp{display:flex;gap:8px;flex:none}
+.hbtn{display:flex;align-items:center;gap:6px;padding:8px 9px;border-radius:var(--r);font-weight:600;color:var(--char);position:relative;white-space:nowrap}
+.hbtn:hover{background:var(--bg2)}
+.hbtn .dot{position:absolute;top:2px;left:21px;min-width:17px;height:17px;border-radius:9px;background:var(--coral);color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px;font-weight:700}
+.locbtn{height:46px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;gap:8px}
+.locbtn .ico:first-child{color:var(--coral)}
+.locbtn .lt{display:flex;flex-direction:column;text-align:left;line-height:1.15}
+.locbtn small{font-size:10.5px;color:var(--mute);font-weight:500}
+.locbtn #locName{max-width:110px;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.distsel{height:46px;border-radius:8px;font-weight:600}
+.top-acts{display:flex;align-items:center;gap:4px;flex:none}
+.sell-btn{height:42px;margin-right:6px;padding:0 20px}
+.hbtn.prof{gap:8px;padding:5px 8px;border:1px solid var(--line2);border-radius:999px}
+.pname{display:none}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--coral-l);display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--coral-d);flex:none;overflow:hidden}
+.avatar.lg{width:72px;height:72px;font-size:22px}.avatar.md{width:46px;height:46px;font-size:15px}
+.hwrap{position:relative}
+.pop{position:absolute;right:0;top:50px;width:340px;background:#fff;border:1px solid var(--line2);border-radius:8px;box-shadow:0 8px 24px #00000018;z-index:80;display:none}
+.pop.open{display:block}
+.pop .ph{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.pop .ph.col{flex-direction:column;align-items:flex-start}
+.pop .pi{display:flex;gap:10px;padding:11px 16px;width:100%;text-align:left;border-bottom:1px solid var(--line);align-items:flex-start;position:relative}
+.pop .pi:hover{background:var(--bg2)}
+.pop .pi.unread{background:var(--yel-l)}
+.pop .pi b{font-weight:600;display:block;line-height:1.35}
+.pop .pi small{color:var(--mute);display:block;font-size:12px}
+.pop .pi .udot{position:absolute;right:14px;top:16px}
+.pop .pf{display:block;text-align:center;padding:11px;color:var(--coral);font-weight:700}
+.pop.menu{width:260px}
+.pop.menu .pi{align-items:center;border:0;padding:11px 16px}
+.pop.menu .pi.sep{border-top:1px solid var(--line)}
+.mnav{border-top:1px solid var(--line);background:#fff}
+.mnav .wrap{display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none;height:46px}
+.mnav .wrap::-webkit-scrollbar{display:none}
+.nav-i{display:flex;align-items:center;gap:7px;padding:0 11px;height:46px;color:var(--char);font-weight:600;font-size:13.5px;white-space:nowrap;border-bottom:3px solid transparent;margin-top:3px}
+.nav-i:hover{color:var(--coral)}
+.nav-i.on{color:var(--coral);border-bottom-color:var(--coral)}
+.nav-i i{font-style:normal;font-size:11px;font-weight:700;background:var(--coral);color:#fff;border-radius:9px;padding:0 6px;min-width:18px;text-align:center}
+.nsep{width:1px;height:20px;background:var(--line2);margin:0 8px;flex:none}
+.catbar{background:var(--bg2);border-bottom:1px solid var(--line)}
+.cats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-top:10px!important;padding-bottom:10px!important}
+.cats::-webkit-scrollbar{display:none}
+.cat{display:flex;align-items:center;gap:8px;padding:8px 16px;white-space:nowrap;color:var(--char);font-weight:600;background:#fff;border:1px solid var(--line2);border-radius:6px;font-size:13.5px}
+.cat:hover{border-color:var(--ink)}
+.cat.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cat .ico{width:17px;height:17px}
+#main{width:100%;max-width:var(--wrap);margin:0 auto;padding:30px 24px 80px;flex:1}
+#main[data-page=market]{max-width:none;padding:0}
+.foot{background:var(--ink);color:#bdbdb8;padding:26px 0;font-size:13px}
+.foot .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.foot b{color:#fff}
+

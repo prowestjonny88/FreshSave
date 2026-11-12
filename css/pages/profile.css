@@ -1,0 +1,13 @@
+/* ---------- Settings ---------- */
+.settings{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:22px;align-items:start;max-width:1120px}
+.toggle{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.toggle:last-child{border:0}
+.toggle b{display:block;font-weight:600}.toggle small{color:var(--mute);font-size:12.5px}
+.toggle input{position:absolute;opacity:0;pointer-events:none}
+.toggle i{width:42px;height:24px;border-radius:12px;background:var(--line2);position:relative;flex:none;transition:background .15s}
+.toggle i:after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
+.toggle input:checked+i{background:var(--coral)}
+.toggle input:checked+i:after{transform:translateX(18px)}
+.toggle input:focus-visible+i{outline:2px solid var(--coral);outline-offset:2px}
+.mobile-only{display:none}
+

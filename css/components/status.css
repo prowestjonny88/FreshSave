@@ -1,0 +1,9 @@
+/* Status labels */
+.sp{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:4px;background:var(--bg2);color:var(--char);white-space:nowrap}
+.sp:before{content:'';width:6px;height:6px;border-radius:50%;background:var(--mute)}
+.sp.g{background:var(--green-l);color:var(--green-d)}.sp.g:before{background:var(--green)}
+.sp.y{background:var(--yel-l);color:var(--yel-d)}.sp.y:before{background:#E2A400}
+.sp.o{background:var(--org-l);color:#9A5200}.sp.o:before{background:var(--org)}
+.sp.r{background:var(--red-l);color:var(--red)}.sp.r:before{background:var(--red)}
+.sp.r.solid{background:var(--red);color:#fff}.sp.r.solid:before{background:#fff}
+

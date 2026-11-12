@@ -1,0 +1,5 @@
+/* ---------- Page bits ---------- */
+.pagehead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding:0 0 22px;margin-bottom:22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pagehead p{margin-top:4px}
+.ph-acts{display:flex;gap:8px;flex-wrap:wrap}
+

@@ -1,0 +1,52 @@
+/* ---------- Product browsing ---------- */
+.browse{display:grid;grid-template-columns:250px minmax(0,1fr);gap:28px;padding:26px 0 70px;align-items:start}
+.filters{background:#fff;border:1px solid var(--line);border-radius:8px;position:sticky;top:176px;max-height:calc(100vh - 190px);overflow:auto}
+.fgrp{padding:16px 18px;border-bottom:1px solid var(--line)}
+.fgrp:last-child{border:0}
+.fhead{display:flex;justify-content:space-between;align-items:center}
+.fgrp h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin-bottom:8px;font-weight:700}
+.locline{display:flex;gap:8px;align-items:flex-start;font-weight:600}
+.pricefields{display:flex;gap:8px;align-items:center}
+.pricefields label{flex:1;position:relative}
+.pricefields span{position:absolute;left:9px;top:9px;font-size:12px;color:var(--mute)}
+.pricefields input{width:100%;height:36px;padding:0 8px 0 34px;border:1px solid var(--line2);border-radius:var(--r);background:#fff}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.pill{border:1px solid var(--line2);border-radius:var(--r);padding:5px 10px;font-size:12.5px;font-weight:500;background:#fff;display:inline-flex;gap:4px;align-items:center}
+.pill:hover{border-color:var(--ink)}
+.pill.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.toolbar .count{font-weight:800;font-size:22px;letter-spacing:-.02em;margin-right:auto}
+.toolbar .count span{font-weight:400;font-size:14px}
+.tags{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.tag{display:inline-flex;gap:6px;align-items:center;background:var(--yel-l);border:1px solid #f2dc9c;border-radius:4px;padding:3px 10px;font-size:12.5px;font-weight:600}
+.tag button{display:grid;place-items:center;color:var(--mute);width:18px;height:18px;margin-right:-4px}
+.tag button:hover{color:var(--ink)}
+.filter-toggle{display:none!important}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:26px 18px}
+.browse .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{display:flex;flex-direction:column;text-align:left;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:border-color .12s,transform .12s}
+a.card:hover{border-color:var(--ink);transform:translateY(-2px)}
+.card .im{aspect-ratio:1/1;position:relative;background:var(--bg2);overflow:hidden}
+.card .im img{width:100%;height:100%;object-fit:cover}
+.badge{position:absolute;top:10px;left:10px;background:var(--yel);color:var(--ink);font-weight:800;font-size:13px;padding:3px 9px;border-radius:4px}
+.badge.lg{top:14px;left:14px;font-size:16px;padding:4px 12px}
+.status{position:absolute;bottom:10px;left:10px;background:#fff;font-size:12px;font-weight:700;padding:3px 8px;border-radius:4px}
+.status.hot{background:var(--coral);color:#fff}
+.card .bd{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1}
+.card .nm{font-weight:600;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:38px;font-size:15px}
+.price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
+.price b{font-size:23px;font-weight:800;color:var(--coral);letter-spacing:-.025em}
+.price s{color:var(--mute);font-size:13.5px}
+.meta{display:flex;gap:5px;align-items:center;color:var(--mute);font-size:12.5px;min-width:0}
+.meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta .sep{flex:none}
+.meta.hotline{color:var(--red)}
+.card.gone .im img{opacity:.45;filter:grayscale(.6)}
+.mini{display:flex;gap:12px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;text-align:left}
+.mini:hover{border-color:var(--ink)}
+.mini img{width:68px;height:68px;object-fit:cover;border-radius:6px;flex:none}
+.mini .t{font-weight:600;font-size:13px;line-height:1.3}
+.mini .p{font-weight:800;margin-top:3px;color:var(--coral)}.mini .p s{color:var(--mute);font-weight:400;font-size:12px}
+.mini .m{font-size:12px;color:var(--mute)}.mini .m b{font-weight:700}.mini .m b.hot{color:var(--red)}
+.scrim{display:none}
+
