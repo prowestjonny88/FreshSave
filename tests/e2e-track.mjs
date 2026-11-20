@@ -1,0 +1,83 @@
+import { session, ok, eq, done } from './e2e-lib.mjs'
+const b = await session()
+console.log('Track, timers and account flows')
+await b.login('aisyah@freshsave.my')
+const counts = async () => b.eval(`return Object.fromEntries([...document.querySelectorAll('.tabs .tab, .chips .chip')].map(t=>[t.getAttribute('href').split('=')[1], t.querySelector('i') ? +t.querySelector('i').textContent : +t.textContent.trim().match(/(\\d+)$/)[1]]))`)
+await b.hash('#/inventory'); let c = await counts()
+eq(Object.keys(c), ['active', 'd7', 'expired', 'history'], 'My food has four simple tabs (All, Use soon, Past date, Used & discarded)')
+await b.hash('#/inventory?st=d7'); const c7 = await counts()
+ok(c7.d1 <= c7.d3 && c7.d3 <= c7.d7, `expiry filters are cumulative (d1=${c7.d1} <= d3=${c7.d3} <= d7=${c7.d7})`)
+eq([c7.d1, c7.d3, c7.d7, c7.expired, c7.active], [2, 3, 4, 1, 8], 'counts match the seed (item due tomorrow appears under Use soon within 7 days)')
+const t7 = await b.text('#main'); ok(t7.includes('Dutch Lady Full Cream Milk') && t7.includes('Strawberries') && t7.includes('everything due sooner'), 'Use soon includes items due today/tomorrow and says so')
+ok(!t7.includes('Past its') , 'past-date items are not in "Within 7 days"')
+// partial consumption + undo
+await b.hash('#/inventory'); const rowBtn = (id, s) => `[data-act=invdone][data-id=${id}][data-s=${s}]`
+await b.click(rowBtn('i1', 'consumed')); ok((await b.modal()).includes('How many used'), 'multi-unit item asks how many were used')
+await b.type('#use-n', '1'); await b.act('mok'); await b.sleep(300)
+let st = await b.state(); let i1 = st.inventory.find((i) => i.id === 'i1'); eq([i1.qty, i1.status, i1.log.length], [1, 'active', 1], 'using 1 of 2 keeps the item active with 1 left')
+ok((await b.toastText()).includes('Undo'), 'undo offered'); await b.click('.toast button'); await b.sleep(300)
+st = await b.state(); i1 = st.inventory.find((i) => i.id === 'i1'); eq([i1.qty, i1.log.length], [2, 0], 'undo restores the unit')
+await b.click(rowBtn('i1', 'discarded')); await b.click('[data-act=useall]'); await b.act('mok'); await b.sleep(300)
+st = await b.state(); i1 = st.inventory.find((i) => i.id === 'i1'); eq([i1.qty, i1.status], [0, 'discarded'], 'discarding all closes the item')
+await b.hash('#/inventory?st=history'); ok((await b.text('#main')).includes('Restore'), 'history offers Restore'); await b.click('[data-act=invundo][data-id=i1]'); await b.sleep(300)
+st = await b.state(); eq([st.inventory.find((i) => i.id === 'i1').qty, st.inventory.find((i) => i.id === 'i1').status], [2, 'active'], 'restored from history')
+await b.hash('#/inventory'); await b.click(rowBtn('i2', 'consumed')); await b.sleep(300)
+st = await b.state(); eq(st.inventory.find((i) => i.id === 'i2').status, 'consumed', 'single-unit item closes immediately (with undo)')
+ok(!(await b.has('#modal h3') && (await b.modalOpen())), 'no dialog for a single unit')
+
+// scan: uncertain read must not pre-fill the date
+await b.hash('#/scan'); ok((await b.text('#main')).includes('Simulated scanning'), 'scan page says OCR is simulated up front')
+await b.eval(`document.querySelector('input[name=sample][value=bread]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
+eq(await b.eval('return location.hash'), '#/scan/result', 'reached confirm page')
+eq(await b.eval(`return document.querySelector('#res-expiry').value`), '', 'unclear reading leaves the date blank')
+ok((await b.text('#main')).includes('Suggested'), 'suggestion shown separately'); ok(!/\d+% confidence|Confidence \d+/i.test(await b.text('#main')), 'no invented confidence percentage')
+await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(200); ok((await b.text('#main')).includes('Enter the date printed'), 'cannot save without a date')
+await b.act('usesuggest'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(200); ok((await b.text('#main')).includes('Tick the box'), 'a suggested date still requires explicit confirmation')
+await b.eval(`document.querySelector('[data-b="res.expiryType"][value="use-by"]').click()`); await b.check('[data-b="res.ok"]'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(500)
+st = await b.state(); const sc = st.inventory.find((i) => i.name.includes('Gardenia') && i.addedAt > Date.now() - 15000); ok(sc && sc.expiryType === 'use-by' && sc.initial === 1, 'scan result saved with chosen date type')
+// failed read
+await b.hash('#/scan'); await b.eval(`document.querySelector('input[name=sample][value=milo]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
+ok((await b.text('#main')).includes('no date found'), 'failed read explained'); 
+// barcode
+await b.hash('#/barcode'); await b.type('#bc-code', '9556041610016'); await b.eval(`document.querySelector('#f-bc').requestSubmit()`); await b.sleep(250)
+ok((await b.toastText()).includes('check digit') && !(await b.has('.bc-res')), 'barcode with a wrong check digit is rejected')
+await b.act('bcsample', '[data-c="9556041610018"]'); ok((await b.text('#main')).includes('Dutch Lady Full Cream Milk 1L') && (await b.text('#main')).includes('sample catalogue'), 'valid barcode found in demo catalogue')
+await b.act('bcuse'); await b.sleep(300); eq(await b.eval('return location.hash'), '#/scan/result', 'barcode flows to the date confirmation page')
+// manual add: date requires confirmation; past date warns
+await b.hash('#/inventory'); await b.act('addmanual'); await b.type('#man-name', 'Test Biscuits'); await b.type('#man-cat', 'pantry'); await b.type('#man-expiry', '2020-01-01')
+ok(!(await b.eval(`return document.querySelector('#man-past').hidden`)), 'past date shows an inline notice'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200); ok((await b.modal()).includes('Tick the box'), 'manual entry requires date confirmation')
+ok(await b.eval(`const m=document.querySelector('#modal'); return m.contains(document.activeElement)`), 'focus is inside the dialog')
+await b.eval(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`); await b.sleep(150); ok(!(await b.modalOpen()), 'Escape closes the dialog')
+// reminders wording
+await b.hash('#/notifications'); const nt = await b.text('#main'); ok(nt.includes('In-app only') && nt.includes('no push') || nt.includes('Nothing is sent by push'), 'notifications page says reminders are in-app only')
+await b.hash('#/profile'); ok((await b.text('#main')).includes('No push, SMS or email is sent') && (await b.text('#main')).includes('plain text'), 'settings state in-app scope and plain-text password')
+
+// timers: stale requests and pickups expire and release units
+await b.hash('#/item/l4'); await b.act('reserve'); await b.act('mok'); await b.sleep(300)
+const rid = (await b.eval('return location.hash')).split('/').pop()
+await b.eval(`const s=JSON.parse(localStorage.getItem('freshsave-app-v2')); const r=s.reservations.find(x=>x.id==='${rid}'); r.respondBy=Date.now()-1000; const r6=s.reservations.find(x=>x.id==='r6'); r6.collectBy=Date.now()-1000; localStorage.setItem('freshsave-app-v2', JSON.stringify(s))`)
+await b.reload(); await b.hash('#/reservations?tab=closed'); await b.sleep(300)
+st = await b.state(); eq(st.reservations.find((x) => x.id === rid).reason, 'no-response', 'pending request lapsed on next open'); eq(st.reservations.find((x) => x.id === 'r6').reason, 'not-collected', 'accepted pickup expired after its collect-by time')
+const pg = await b.text('#main'); ok(pg.includes('Seller did not respond in time') && pg.includes('Not collected before the deadline'), 'closed tab explains each reason')
+await b.hash('#/item/l4'); ok((await b.text('#main')).includes('15 unit'), 'released units are available again (15 of 15)')
+ok((await b.state()).notifs.some((n) => n.user === 'u1' && /expired/i.test(n.text)), 'buyer notified of expiry')
+
+// auth + onboarding + role boundaries
+await b.logout()
+await b.hash('#/register'); await b.type('#a-name', 'Test Person'); await b.type('#a-email', 'tester@example.com'); await b.type('#a-pw', 'password99')
+await b.eval(`document.querySelector('#f-register').requestSubmit()`); await b.sleep(300); ok((await b.text('#main')) !== null && (await b.text('.auth-card')).includes('Please confirm to continue'), 'registration requires the prototype consent')
+await b.click('[data-act=role][data-r=retailer]'); ok((await b.text('.auth-card')).includes('Anyone can register as a retailer'), 'retailer registration states sellers are unverified')
+await b.click('[data-act=role][data-r=individual]'); await b.type('#a-name', 'Test Person'); await b.type('#a-email', 'tester@example.com'); await b.type('#a-pw', 'password99'); await b.check('#a-consent'); await b.eval(`document.querySelector('#f-register').requestSubmit()`); await b.sleep(500)
+eq(await b.eval('return location.hash'), '#/dashboard', 'new user lands on Today'); ok((await b.text('#main')).includes('Welcome to FreshSave') && (await b.text('#main')).includes('0/3 steps done'), 'first-time checklist shown')
+await b.hash('#/sell'); ok((await b.text('#main')).includes('Listing is for participating retailers'), 'individuals cannot list food in the pilot (clear explanation)')
+await b.hash('#/batches'); await b.sleep(200); eq(await b.eval('return location.hash'), '#/inventory', 'retailer-only pages redirect individuals')
+await b.hash('#/inventory'); ok((await b.text('#main')).includes('Nothing tracked yet'), 'empty inventory explains the next step')
+await b.hash('#/reservations'); ok((await b.text('#main')).includes('Find sealed pantry'), 'empty reservations point to Find food')
+await b.logout()
+// keep-me-logged-in unchecked → session marker
+await b.hash('#/login'); await b.type('#a-email', 'aisyah@freshsave.my'); await b.type('#a-pw', 'demo1234'); await b.eval(`document.querySelector('input[name=keep]').checked=false`); await b.eval(`document.querySelector('#f-login').requestSubmit()`); await b.sleep(400)
+eq((await b.state()).sessionTemp, true, '"Keep me logged in" off creates a tab-only session')
+await b.logout(); await b.hash('#/forgot'); ok((await b.text('.auth-card')).includes('Demo only') && (await b.text('.auth-card')).includes('No email is sent'), 'forgot-password is labelled demo-only before submission')
+await b.hash('#/about'); ok((await b.text('body')).includes('What is real, local or simulated'), 'About page reachable while logged out')
+console.log('JS errors:', b.errors.length ? b.errors : 'none'); ok(b.errors.length === 0, 'no JavaScript errors')
+await b.close(); process.exit(done() ? 1 : 0)

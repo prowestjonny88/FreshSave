@@ -1,0 +1,22 @@
+import { session, ok, eq, done } from './e2e-lib.mjs'
+const b = await session()
+console.log('Escaping + relist')
+await b.login('aisyah@freshsave.my')
+// a hostile product name on a reservation the buyer holds must render as text everywhere
+await b.eval(`const s=JSON.parse(localStorage.getItem('freshsave-app-v2')); const r=s.reservations.find(x=>x.id==='r6'); r.terms.name='<img src=x onerror=window.__pwn=1>Crackers'; r.terms.sellerName='<b id=pwn2>Shop</b>'; s.users[0].name='<i id=pwn3>Aisyah</i>'; localStorage.setItem('freshsave-app-v2', JSON.stringify(s))`)
+await b.reload()
+for (const p of ['#/dashboard', '#/market', '#/reservations?tab=confirmed', '#/reservation/r6', '#/impact', '#/profile']) { await b.hash(p); await b.sleep(150) }
+await b.click('[data-act=npop]')
+eq(await b.eval(`return !!window.__pwn || !!document.querySelector('#pwn2') || !!document.querySelector('#pwn3')`), false, 'markup in names is escaped on dashboard, market strip, reservations, profile and header')
+await b.logout()
+// relist shortcut (retailer)
+await b.loginKeep('pakdin@freshsave.my')
+await b.hash('#/listings?tab=done'); ok((await b.text('#main')).includes('Relist'), 'finished listings offer Relist')
+await b.eval(`document.querySelector('a[href^="#/sell?from="]').click()`); await b.sleep(300)
+eq(await b.eval(`return document.querySelector('#wz-name').value.length > 3`), true, 'relist pre-fills product details')
+await b.sleep(100); await b.check('[data-b="wz.c1"]'); await b.check('[data-b="wz.c2"]'); await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(250)
+eq(await b.eval(`return document.querySelector('#wz-orig').value !== ''`), true, 'relist keeps previous prices')
+await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(250)
+eq(await b.eval(`return document.querySelector('#wz-expiry').value`), '', 'relist leaves the date blank – a new batch needs a new, checked date')
+ok(b.errors.length === 0, 'no JavaScript errors')
+await b.close(); process.exit(done() ? 1 : 0)
