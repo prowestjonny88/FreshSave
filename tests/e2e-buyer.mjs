@@ -10,13 +10,13 @@ ok(!(await b.has('#cats [data-id=meat]')) && !(await b.has('#cats [data-id=dairy
 
 // search suggestion respects the distance filter
 await b.act('setdist', '[data-v="2"]').catch(() => {})
-await b.eval(`document.querySelector('#hdr-dist').value='2'; document.querySelector('#hdr-dist').dispatchEvent(new Event('change',{bubbles:true}))`); await b.sleep(300)
-await b.eval(`const q=document.querySelector('#q'); q.value='cooking oil'; q.dispatchEvent(new Event('input',{bubbles:true}))`); await b.sleep(200)
+await b.type('#hdr-dist', '2')
+await b.type('#q', 'cooking oil')
 const sug = await b.text('#sdrop'); ok(!sug.includes('Seri Murni'), 'search suggestions hide listings outside the ~2 km filter')
-await b.eval(`document.querySelector('#hdr-dist').value='all'; document.querySelector('#hdr-dist').dispatchEvent(new Event('change',{bubbles:true}))`); await b.sleep(300)
-await b.eval(`const q=document.querySelector('#q'); q.value='cooking oil'; q.dispatchEvent(new Event('input',{bubbles:true}))`); await b.sleep(200)
+await b.type('#hdr-dist', 'all')
+await b.type('#q', 'cooking oil')
 ok((await b.text('#sdrop')).includes('Seri Murni'), 'and shows them again with "Show all"')
-await b.eval(`document.querySelector('#q').value=''`)
+await b.type('#q', '')
 
 // product page
 await b.hash('#/item/l2'); const item = await b.text('#main')
@@ -57,10 +57,12 @@ await b.act('addfrom'); let m = await b.modal(); ok(m.includes('Pre-filled from 
 await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200)
 ok((await b.modal()).includes('Tick the box to confirm'), 'cannot save a date without confirming it against the pack')
 await b.check('[data-b="man.ok"]'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(400)
-st = await b.state(); ok(st.inventory.some((i) => i.name.includes('Gardenia Original') && i.owner === 'u1' && i.addedAt > Date.now() - 20000 && i.qty === 2), 'item added to My food with confirmed date')
+st = await b.state(); const savedNow = await b.eval('return Date.now()'); ok(st.inventory.some((i) => i.name.includes('Gardenia Original') && i.owner === 'u1' && i.addedAt > savedNow - 20000 && i.qty === 2), 'item added to My food with confirmed date')
 await b.hash('#/impact'); page = await b.text('#main')
 ok(page.includes('excluded') && /simulated handover/.test(page), 'activity page states what is excluded (sample/simulated)')
 ok(!/Food Rescued|landfill|kg of food|tonnes/i.test(page) && page.includes('Not measured') && page.includes('not an estimate of food waste avoided'), 'no unsupported impact claims; limits stated')
+await b.hash('#/reservations?tab=unknown')
+ok((await b.text('#main')).includes('My reservations') && await b.has('.tabs .on'), 'unknown Reservations tab falls back to a valid view')
 console.log('JS errors:', b.errors.length ? b.errors : 'none')
 ok(b.errors.length === 0, 'no JavaScript errors during buyer journey')
 await b.close(); process.exit(done() ? 1 : 0)

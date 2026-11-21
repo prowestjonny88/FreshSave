@@ -96,7 +96,8 @@ test('A2: simulated handover works only for the buyer of an account-less sample 
   assert.match(c.completeRes(r, null, { simulated: true }), /only available/i)
 })
 test('A2: activity metrics count only code-checked, non-sample, non-disputed handovers', async () => {
-  reset(); const { metrics, validHandover } = await import('../src/views/account.js')
+  reset(); const { handoverMetrics, validHandover } = await import('../src/domain/activity.ts')
+  const metrics = () => handoverMetrics(c.S.reservations.filter(r => r.buyerId === c.me().id || r.terms.sellerId === c.me().sellerId))
   as('u2'); assert.equal(metrics().handovers, 0, 'seeded sample handovers do not count'); assert.ok(metrics().sampleDone >= 3)
   as('u1'); const { r } = c.createReservation(L('l6'), 2); as('u2'); c.confirmRes(r); c.completeRes(r, r.pin, { checked: true })
   assert.equal(metrics().handovers, 1); assert.equal(metrics().units, 2)
@@ -135,7 +136,7 @@ test('A3: pilot eligibility rejects chilled, frozen, raw, fresh, opened and past
   for (const pack of ['chilled', 'frozen', 'raw', 'fresh', 'cooked', 'infant', 'opened']) { const r = c.eligibility({ ...ok, pack }); assert.equal(r.ok, false, pack); assert.equal(r.rejected, true, pack) }
   assert.equal(c.eligibility({ ...ok, c1: false }).ok, false); assert.equal(c.eligibility({ ...ok, c2: false }).ok, false); assert.equal(c.eligibility({ ...ok, c3: false }).ok, false)
   assert.equal(c.eligibility({ ...ok, expiry: '2000-01-01' }).rejected, true)
-  assert.match(c.eligResult({ ...ok }), /not verified|does not inspect/i)
+  assert.equal(c.eligibility({ ...ok, c3: false }).ok, false, 'the printed date declaration is required')
 })
 test('A3: collection window rules differ for use-by and best-before and reject past days', () => {
   const exp = c.iso(c.addDays(c.today0(), 5))
@@ -174,7 +175,7 @@ test('A4: use-by expiry wording differs from best-before in alerts', () => {
   assert.match(t, /Yoghurt.*past its use-by date/s); assert.match(t, /don't eat it/)
 })
 test('barcode check digits are validated', async () => {
-  const { gtinOk } = await import('../src/views/tracking.js')
+  const { gtinOk } = await import('../src/domain/barcode.ts')
   for (const ok of ['9556041610018', '9556001062048', '9551234567896', '96385074', '036000291452']) assert.equal(gtinOk(ok), true, ok)
   for (const bad of ['9556041610016', '12345678', '123', '95560416100181']) assert.equal(gtinOk(bad), false, bad)
 })

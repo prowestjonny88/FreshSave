@@ -7,6 +7,8 @@ const sub = (f) => b.eval(`document.querySelector('${f}').requestSubmit()`).then
 await b.hash('#/scan'); ok((await b.text('#main')).includes('Add stock') && (await b.text('#main')).includes('your stock'), 'scan page targets batch inventory for retailers')
 await b.eval(`document.querySelector('input[name=sample][value=milk]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
 ok((await b.text('#main')).includes('Quantity received'), 'result form uses batch wording for retailers'); await b.type('#res-qty', '12')
+await b.type('#res-name', 'Dutch Lady UHT Full Cream Milk')
+await b.type('#res-cat', 'drinks')
 await b.check('[data-b="res.ok"]'); await sub('#f-res'); await b.sleep(300)
 let h = await b.eval('return location.hash'); ok(/^#\/batch\/b/.test(h), 'saved as a batch: ' + h)
 const bid = h.split('/').pop()

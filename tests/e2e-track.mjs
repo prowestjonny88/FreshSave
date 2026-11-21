@@ -34,7 +34,7 @@ ok((await b.text('#main')).includes('Suggested'), 'suggestion shown separately')
 await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(200); ok((await b.text('#main')).includes('Enter the date printed'), 'cannot save without a date')
 await b.act('usesuggest'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(200); ok((await b.text('#main')).includes('Tick the box'), 'a suggested date still requires explicit confirmation')
 await b.eval(`document.querySelector('[data-b="res.expiryType"][value="use-by"]').click()`); await b.check('[data-b="res.ok"]'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(500)
-st = await b.state(); const sc = st.inventory.find((i) => i.name.includes('Gardenia') && i.addedAt > Date.now() - 15000); ok(sc && sc.expiryType === 'use-by' && sc.initial === 1, 'scan result saved with chosen date type')
+st = await b.state(); const scanNow = await b.eval('return Date.now()'); const sc = st.inventory.find((i) => i.name.includes('Gardenia') && i.addedAt > scanNow - 15000); ok(sc && sc.expiryType === 'use-by' && sc.initial === 1, 'scan result saved with chosen date type')
 // failed read
 await b.hash('#/scan'); await b.eval(`document.querySelector('input[name=sample][value=milo]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
 ok((await b.text('#main')).includes('no date found'), 'failed read explained'); 
@@ -65,7 +65,7 @@ ok((await b.state()).notifs.some((n) => n.user === 'u1' && /expired/i.test(n.tex
 // auth + onboarding + role boundaries
 await b.logout()
 await b.hash('#/register'); await b.type('#a-name', 'Test Person'); await b.type('#a-email', 'tester@example.com'); await b.type('#a-pw', 'password99')
-await b.eval(`document.querySelector('#f-register').requestSubmit()`); await b.sleep(300); ok((await b.text('#main')) !== null && (await b.text('.auth-card')).includes('Please confirm to continue'), 'registration requires the prototype consent')
+await b.eval(`document.querySelector('#f-register').requestSubmit()`); await b.sleep(300); ok((await b.text('.auth-card')).includes('Please confirm to continue'), 'registration requires the prototype consent')
 await b.click('[data-act=role][data-r=retailer]'); ok((await b.text('.auth-card')).includes('Anyone can register as a retailer'), 'retailer registration states sellers are unverified')
 await b.click('[data-act=role][data-r=individual]'); await b.type('#a-name', 'Test Person'); await b.type('#a-email', 'tester@example.com'); await b.type('#a-pw', 'password99'); await b.check('#a-consent'); await b.eval(`document.querySelector('#f-register').requestSubmit()`); await b.sleep(500)
 eq(await b.eval('return location.hash'), '#/dashboard', 'new user lands on Today'); ok((await b.text('#main')).includes('Welcome to FreshSave') && (await b.text('#main')).includes('0/3 steps done'), 'first-time checklist shown')

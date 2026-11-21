@@ -1,5 +1,5 @@
 import { launch } from './cdp.mjs'
-export const URL = 'http://127.0.0.1:3000/'
+export { BASE_URL as URL } from './cdp.mjs'
 let pass = 0, fail = 0
 export const ok = (cond, msg) => { if (cond) { pass++; console.log('  PASS', msg) } else { fail++; console.log('  FAIL', msg) } }
 export const eq = (a, b, msg) => ok(JSON.stringify(a) === JSON.stringify(b), `${msg}${JSON.stringify(a) === JSON.stringify(b) ? '' : ` (got ${JSON.stringify(a)}, want ${JSON.stringify(b)})`}`)

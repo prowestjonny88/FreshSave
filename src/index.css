@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap');
+@import 'tailwindcss';
+@import './styles.css' layer(components);
+
+@theme static {
+  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-freshsave: #cc4a30;
+  --color-freshsave-green: #3f7350;
+  --color-freshsave-ink: #252525;
+  --radius-control: 6px;
+  --container-shell: 1240px;
+  --spacing-gutter: 24px;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--color-freshsave-ink);
+    font-size: 14.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { cursor: pointer; background: none; border: 0; text-align: inherit; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--color-freshsave); outline-offset: 2px; }
+  h1 { font-size: 28px; letter-spacing: -.025em; font-weight: 800; line-height: 1.15; }
+  h2 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+  h3 { font-size: 16px; font-weight: 700; }
+}
+
+@layer components {
+  .okbar .c { background: var(--green-d); }
+  .okbar.wait .c { background: var(--yel-l); color: var(--yel-d); }
+  .okbar.bad .c { background: var(--red-l); color: var(--red); }
+}

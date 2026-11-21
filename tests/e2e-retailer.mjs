@@ -25,7 +25,7 @@ const rnav = await b.text('#nav'); ok(/Store today[\s\S]*TRACK[\s\S]*Stock[\s\S]
 await b.hash('#/reservations?view=seller&tab=pending'); page = await b.text('#main'); ok(page.includes('Nurul Ain') && page.includes('Sample record'), 'sample pending request visible and tagged as sample')
 // accept Aisyah's request
 await b.act('raccept', `[data-id="${rid}"]`); ok((await b.modal()).includes('pickup code'), 'accept dialog explains hold, basket and code entry'); await b.act('mok'); await b.sleep(300)
-st = await b.state(); r = st.reservations.find((x) => x.id === rid); eq(r.status, 'confirmed', 'seller accept → confirmed'); ok(r.collectBy > Date.now(), 'collect-by deadline set')
+st = await b.state(); r = st.reservations.find((x) => x.id === rid); eq(r.status, 'confirmed', 'seller accept → confirmed'); ok(r.collectBy > await b.eval('return Date.now()'), 'collect-by deadline set')
 // handover: wrong code, missing ticks, right code
 await b.hash('#/reservation/' + rid); await b.act('rhandover')
 ok(!(await b.modal()).includes(pin), 'seller never sees the buyer\'s code for a real buyer')
@@ -80,7 +80,7 @@ await b.type('#wz-expiry', '2000-01-01'); await b.eval(`document.querySelector('
 await b.type('#wz-expiry', d3); await b.eval(`document.querySelector('[data-b="wz.expiryType"][value="use-by"]').click()`); await b.sleep(150)
 await b.type('#wz-pickupUntil', d3); await b.check('[data-b="wz.c3"]'); await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(250)
 ok((await b.text('#main')).includes('at least a day before') || (await b.text('#main')).includes('Use-by food must be collected by'), 'use-by food cannot be collected on its date')
-await b.eval(`const e=document.querySelector('#wz-pickupUntil'); e.value=e.max; e.dispatchEvent(new Event('input',{bubbles:true}))`); await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(300)
+await b.type('#wz-pickupUntil', await b.eval(`return document.querySelector('#wz-pickupUntil').max`)); await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(300)
 ok((await b.text('#main')).includes('Review and publish'), 'valid window accepted → review')
 const nBatches = (await b.state()).batches.length
 await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(500)
@@ -96,9 +96,9 @@ ok((await b.text('#main')).includes('already have a live listing'), 'same produc
 // basket transition drives visibility
 await b.hash('#/basket/' + nl.id); await b.act('moved'); await b.act('mok'); await b.sleep(300)
 st = await b.state(); ok(st.listings.find((l) => l.id === nl.id).status === 'active', 'confirming the move makes the listing live')
-await b.hash('#/listings?tab=ended'); page = await b.text('#main'); ok(page.includes("Jacob's Cream Crackers") && page.includes('Return to shelf'), 'ended listing offers Return to shelf')
+await b.hash('#/listings?tab=ended'); page = await b.text('#main'); ok(page.includes("Jacob's Cream Crackers") && page.includes('Remove from sale'), 'expired listing offers Remove from sale')
 await b.act('lreturn'); await b.act('mok'); await b.sleep(300)
-st = await b.state(); const m4 = st.listings.find((l) => l.id === 'm4'); ok(m4.status === 'closed' && m4.withdrawn === 5, 'return to shelf withdraws the 5 unsold units and closes the listing')
+st = await b.state(); const m4 = st.listings.find((l) => l.id === 'm4'); ok(m4.status === 'closed' && m4.withdrawn === 5 && m4.removedQty === 5, 'expired units close the listing and are excluded from relisting')
 // batch ledger view
 await b.hash('#/batch/b6'); page = await b.eval(`return document.querySelector('#main').textContent`); ok(page.includes('Handed over') && page.includes('Received') && page.includes('Every unit is counted once'), 'batch page shows unit accounting')
 // batch list form: cap

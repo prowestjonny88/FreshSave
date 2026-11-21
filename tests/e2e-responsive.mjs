@@ -1,6 +1,8 @@
 import { session, ok, eq, done } from './e2e-lib.mjs'
-import { mkdirSync } from 'node:fs'
-mkdirSync('/tmp/shots', { recursive: true })
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+const shots = mkdtempSync(join(tmpdir(), 'freshsave-shots-'))
 const PAGES = {
   individual: ['#/market', '#/dashboard', '#/inventory', '#/scan', '#/barcode', '#/reservations?tab=confirmed', '#/reservation/r6', '#/item/l1', '#/seller/jaya', '#/notifications', '#/impact', '#/profile', '#/about', '#/market?x'],
   retailer: ['#/dashboard', '#/batches', '#/batch/b6', '#/batch/b7', '#/batch/b7/list', '#/listings', '#/listings?tab=awaiting', '#/sell', '#/basket', '#/basket/l6', '#/reservations', '#/reservation/r2', '#/impact', '#/profile', '#/item/l6'],
@@ -24,7 +26,7 @@ for (const role of ['individual', 'retailer']) {
       await b.hash(p); await b.sleep(150)
       const o = await b.overflow(); if (o > 1) bad.push(`${p} overflows by ${o}px`)
       if (w === 1440) { const f = await b.eval(a11y); f.forEach((x) => issues.push(`${role} ${p}: ${x}`)) }
-      if ([390, 768].includes(w) && ['#/market', '#/dashboard', '#/inventory', '#/listings', '#/reservations?tab=confirmed', '#/reservations', '#/batches', '#/item/l1', '#/reservation/r6', '#/batch/b7/list', '#/basket', '#/sell'].includes(p)) await b.shot(`/tmp/shots/${role}_${w}_${p.replace(/[^a-z0-9]+/gi, '_')}.png`)
+      if ([390, 768].includes(w) && ['#/market', '#/dashboard', '#/inventory', '#/listings', '#/reservations?tab=confirmed', '#/reservations', '#/batches', '#/item/l1', '#/reservation/r6', '#/batch/b7/list', '#/basket', '#/sell'].includes(p)) await b.shot(join(shots, `${role}_${w}_${p.replace(/[^a-z0-9]+/gi, '_')}.png`))
     }
     const nav = await b.eval(`const n=document.querySelector('#bnav'); return getComputedStyle(n).display`)
     ok(bad.length === 0, `${role} @${w}px: no horizontal overflow on ${PAGES[role].length} pages` + (bad.length ? ' – ' + bad.join('; ') : ''))
