@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { CATEGORIES, catLabel, LOCATIONS, photo, RESCUE_CATS } from "../data.js";
 import { listingLedger } from "../domain/model.ts";
@@ -33,6 +33,8 @@ export function MarketSearch() {
   const [matches, setMatches] = useState<ViewData>();
   const navigate = useNavigate(),
     location = useLocation();
+  const query = new URLSearchParams(location.search).get("q") || "";
+  useEffect(() => setText(query), [query]);
   useEffect(() => {
     setOpen(false);
   }, [location.pathname, location.search]);
@@ -260,14 +262,42 @@ export function Market() {
   );
   const actions = needsToday(data),
     first = actions[0];
+  const filtered =
+    !!category || !!min || !!max || expiry !== "all" || dateType !== "all" || collect !== "all";
   const noResults = (
-    <Empty title="No listings match right now." text="Try another area or widen the distance.">
-      <Button act="setdist" data-v="10" onClick={() => setDistance(10)}>
-        Widen to ~10 km
-      </Button>
-      <Button act="setdist" data-v="all" className="btn sec" onClick={() => setDistance("all")}>
-        Show all distances
-      </Button>
+    <Empty
+      title="No listings match right now."
+      text={
+        search
+          ? "Clear the search to see offers with your current filters."
+          : filtered
+            ? "Try removing your filters."
+            : "Try another area or widen the distance."
+      }
+    >
+      {search ? (
+        <Button onClick={() => update("q", "")}>Clear search</Button>
+      ) : filtered ? (
+        <Button onClick={reset}>Reset filters</Button>
+      ) : (
+        <>
+          {distance !== "all" && Number(distance) < 10 && (
+            <Button act="setdist" data-v="10" onClick={() => setDistance(10)}>
+              Widen to ~10 km
+            </Button>
+          )}
+          {distance !== "all" && (
+            <Button
+              act="setdist"
+              data-v="all"
+              className="btn sec"
+              onClick={() => setDistance("all")}
+            >
+              Show all distances
+            </Button>
+          )}
+        </>
+      )}
     </Empty>
   );
   function update(name: string, value: string) {
@@ -503,6 +533,7 @@ export function Market() {
 }
 
 export function Item() {
+  const pickupHeading = useRef<HTMLHeadingElement>(null);
   const { id } = useParams(),
     { data, mode, dialog, run } = useUI(),
     navigate = useNavigate();
@@ -586,6 +617,15 @@ export function Item() {
           <div className="d-price">
             <b>{rm(listing.price)}</b> <s>{rm(listing.orig)}</s>
           </div>
+          <Button
+            className="link pickup-jump"
+            onClick={() => {
+              pickupHeading.current?.focus({ preventScroll: true });
+              pickupHeading.current?.scrollIntoView({ block: "start" });
+            }}
+          >
+            View pickup details <span aria-hidden="true">↓</span>
+          </Button>
         </header>
         <div className="product-gallery">
           <div
@@ -643,7 +683,9 @@ export function Item() {
           </div>
         </div>
         <section className="box pickup-panel" aria-labelledby="pickup-heading">
-          <h2 id="pickup-heading">Reserve for pickup</h2>
+          <h2 id="pickup-heading" ref={pickupHeading} tabIndex={-1}>
+            Reserve for pickup
+          </h2>
           <dl className="deflist tight pickup-facts">
             <dt>{dateWord(listing.expiryType)}</dt>
             <dd>
@@ -657,20 +699,23 @@ export function Item() {
             </dd>
             {seller && (
               <>
-                <dt>Pickup</dt>
-                <dd>
+                <dt className="pickup-wide">Pickup</dt>
+                <dd className="pickup-wide">
                   {seller.name}
                   <br />
                   {seller.area}
                 </dd>
               </>
             )}
-            <dt>Instructions</dt>
-            <dd>{listing.instr}</dd>
+            <dt className="pickup-wide">Instructions</dt>
+            <dd className="pickup-wide">{listing.instr}</dd>
           </dl>
           <div className="pickup-safety">
             <div>
-              <h3>Food safety</h3> <Badge tone="y">Not verified</Badge>
+              <svg className="ico sm" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3 2.5 20h19L12 3Z M12 9v4 M12 16v.1" />
+              </svg>
+              <h3>Food safety</h3> <Badge tone="y">Seller-declared · Not verified</Badge>
             </div>
             <p>
               FreshSave does not inspect, test or certify food. Check the seal, printed date, and

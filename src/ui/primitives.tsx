@@ -1,10 +1,20 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type AriaAttributes,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
 import { Link, useSearchParams } from "react-router";
 import { CATEGORIES, photo, RESCUE_CATS, catLabel } from "../data.js";
 import type { Listing, Store, UnitLedger } from "../domain/model.ts";
 import type { DateType } from "../domain/time.ts";
 import { STORE_ZONE, daysUntil, storeTime } from "../domain/time.ts";
 import type { Result } from "../services/contracts.ts";
+import unavailableImage from "../image-unavailable.svg";
 import { useUI } from "./state.tsx";
 
 export const rm = (value: number) => "RM" + value.toFixed(2);
@@ -263,20 +273,55 @@ export function Field({
   children: ReactNode;
   hint?: string;
 }) {
+  const control =
+    isValidElement<AriaAttributes & { id?: string }>(children) &&
+    children.props.id === id &&
+    (children.type === "input" || children.type === "select" || children.type === "textarea");
+  const hintId = id + "-hint",
+    errorId = id + "-error";
+  const content = control
+    ? cloneElement(children, {
+        "aria-invalid": error ? true : children.props["aria-invalid"],
+        "aria-describedby":
+          [children.props["aria-describedby"], hint && hintId, error && errorId]
+            .filter(Boolean)
+            .join(" ") || undefined,
+      })
+    : children;
   return (
     <div className={"fld" + (error ? " err" : "")} data-fk={id.split("-").slice(1).join("-")}>
       <label className="l" htmlFor={id}>
         {label}
       </label>
-      {children}
-      {hint && <div className="hint">{hint}</div>}
+      {content}
+      {hint && (
+        <div id={hintId} className="hint">
+          {hint}
+        </div>
+      )}
       {error && (
-        <div className="e" role="alert">
+        <div id={errorId} className="e" role="alert">
           {error}
         </div>
       )}
     </div>
   );
+}
+export function useFormErrorFocus(error: string | object | undefined) {
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      const invalid = Array.from(
+        form.current?.querySelectorAll<HTMLElement>('[aria-invalid="true"]:not([disabled])') || [],
+      ).find((element) => element.offsetParent);
+      const target = invalid || form.current?.querySelector<HTMLElement>("[data-form-error]");
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: "center", behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
+  return form;
 }
 export function Categories({ rescue = false }: { rescue?: boolean }) {
   return (
@@ -388,19 +433,31 @@ export function Confirm({
 export function Badge({ children, tone = "" }: { children: ReactNode; tone?: string }) {
   return <span className={"sp " + tone}>{children}</span>;
 }
-export function Picture({ src, alt = "", ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+export function Picture({
+  src,
+  alt = "",
+  onError,
+  ...props
+}: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const image = useRef<HTMLImageElement>(null);
+  const [failedSrc, setFailedSrc] = useState<string>();
+  const unavailable = !src || failedSrc === src;
+  useEffect(() => {
+    if (!unavailable && image.current?.complete && image.current.naturalWidth === 0)
+      setFailedSrc(src);
+  }, [src, unavailable]);
   return (
     <img
       {...props}
-      alt={alt}
-      src={
-        failed || !src
-          ? 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect width="100" height="100" fill="%23f1f0ec"/%3E%3C/svg%3E'
-          : src
-      }
-      onError={() => setFailed(true)}
+      ref={image}
+      alt={unavailable && alt ? `${alt} · image unavailable` : alt}
+      src={unavailable ? unavailableImage : src}
+      srcSet={unavailable ? undefined : props.srcSet}
+      data-image-unavailable={unavailable || undefined}
+      onError={(event) => {
+        if (!unavailable) setFailedSrc(src);
+        onError?.(event);
+      }}
     />
   );
 }

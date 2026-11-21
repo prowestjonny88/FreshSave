@@ -44,7 +44,9 @@ ok((await b.toastText()).includes('check digit') && !(await b.has('.bc-res')), '
 await b.act('bcsample', '[data-c="9556041610018"]'); ok((await b.text('#main')).includes('Dutch Lady Full Cream Milk 1L') && (await b.text('#main')).includes('sample catalogue'), 'valid barcode found in demo catalogue')
 await b.act('bcuse'); await b.sleep(300); eq(await b.eval('return location.hash'), '#/scan/result', 'barcode flows to the date confirmation page')
 // manual add: date requires confirmation; past date warns
-await b.hash('#/inventory'); await b.act('addmanual'); await b.type('#man-name', 'Test Biscuits'); await b.type('#man-cat', 'pantry'); await b.type('#man-expiry', '2020-01-01')
+await b.hash('#/inventory'); await b.act('addmanual'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(250)
+ok(await b.eval(`const field = document.querySelector('#man-name'); return document.activeElement === field && field.getAttribute('aria-invalid') === 'true' && document.getElementById(field.getAttribute('aria-describedby'))?.textContent.includes('Enter the product name')`), 'invalid manual entry focuses the field and associates its error')
+await b.type('#man-name', 'Test Biscuits'); await b.type('#man-cat', 'pantry'); await b.type('#man-expiry', '2020-01-01')
 ok(!(await b.eval(`return document.querySelector('#man-past').hidden`)), 'past date shows an inline notice'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200); ok((await b.modal()).includes('Tick the box'), 'manual entry requires date confirmation')
 ok(await b.eval(`const m=document.querySelector('#modal'); return m.contains(document.activeElement)`), 'focus is inside the dialog')
 await b.eval(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`); await b.sleep(150); ok(!(await b.modalOpen()), 'Escape closes the dialog')

@@ -46,6 +46,7 @@ import {
   rm,
   Tabs,
   UnitBar,
+  useFormErrorFocus,
   units,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
@@ -213,7 +214,7 @@ export function BatchDetail() {
         <Link to="/batches">Stock</Link> › {batch.name}
       </div>
       <div className="batch">
-        <div className="box batch-info">
+        <div className={"box batch-info" + (state === "check" ? " batch-info-count" : "")}>
           <Picture src={batch.photo || photo(batch.kind, 0, 480)} />
           <div>
             <h1 className="d-title">{batch.name}</h1>
@@ -256,11 +257,30 @@ export function BatchDetail() {
               <div>
                 <h2>Count the shelf</h2>
                 <p>
-                  You recorded <b>{units(batch.qty)}</b>. Count what is physically on the shelf now.
+                  You recorded <b>{units(batch.qty)}</b> when the stock arrived. Count what is
+                  physically on the shelf now.
                 </p>
               </div>
             </div>
             <div className="sc-opts">
+              <div className="sc-opt main">
+                <h3>Offer on Rescue</h3>
+                <p>Enter your shelf count for sealed, room-temperature packaged food.</p>
+                {expired || !stock.listable ? (
+                  <>
+                    <Button disabled>Offer on Rescue</Button>
+                    <p className="hint">
+                      {expired
+                        ? "Past its printed date – can’t be listed."
+                        : "No units left to allocate."}
+                    </p>
+                  </>
+                ) : (
+                  <Link className="btn block" to={"/batch/" + batch.id + "/list"}>
+                    Enter shelf count
+                  </Link>
+                )}
+              </div>
               <div className="sc-opt">
                 <h3>Sold out / dismiss</h3>
                 <p>No units are left.</p>
@@ -282,24 +302,6 @@ export function BatchDetail() {
                 >
                   Sold out – dismiss
                 </Button>
-              </div>
-              <div className="sc-opt main">
-                <h3>Offer on Rescue</h3>
-                <p>Offer sealed, room-temperature packaged food.</p>
-                {expired || !stock.listable ? (
-                  <>
-                    <Button disabled>Offer on Rescue</Button>
-                    <p className="hint">
-                      {expired
-                        ? "Past its printed date – can’t be listed."
-                        : "No units left to allocate."}
-                    </p>
-                  </>
-                ) : (
-                  <Link className="btn block" to={"/batch/" + batch.id + "/list"}>
-                    Offer on Rescue
-                  </Link>
-                )}
               </div>
             </div>
           </section>
@@ -367,12 +369,20 @@ export function BatchDetail() {
   );
 }
 
-function ListingAction({ l, action }: { l: Listing; action: "move" | "return" | "withdraw" }) {
+function ListingAction({
+  l,
+  action,
+  primary = false,
+}: {
+  l: Listing;
+  action: "move" | "return" | "withdraw";
+  primary?: boolean;
+}) {
   const { dialog, run, data } = useUI();
   const expired = pastCollectionDate(l.expiry, l.expiryType, Date.now());
   const actionLabel =
     action === "move"
-      ? "Confirm moved"
+      ? "Confirm units set aside"
       : action === "withdraw"
         ? "Withdraw listing"
         : expired
@@ -382,13 +392,15 @@ function ListingAction({ l, action }: { l: Listing; action: "move" | "return" | 
   const act = action === "move" ? "moved" : action === "withdraw" ? "lremove" : "lreturn";
   return (
     <Button
-      className={action === "withdraw" ? "d" : "ibtn go"}
+      className={primary ? "btn" : action === "withdraw" ? "d" : "ibtn go"}
       act={act}
       data-id={l.id}
       onClick={() =>
         dialog(
           <Confirm
-            title={action === "move" ? "Confirm units moved?" : actionLabel + "?"}
+            title={
+              action === "move" ? "Are the units in your Clearance Basket?" : actionLabel + "?"
+            }
             action={actionLabel}
             danger={action === "withdraw"}
             submit={() => run(command, { id: l.id, cancelOpen: action === "withdraw" })}
@@ -610,7 +622,6 @@ export function Basket() {
         <div className="okbar">
           <div>
             <b>Listing created</b>
-            <p>Buyers can see it after you confirm the physical move.</p>
           </div>
         </div>
       )}
@@ -619,11 +630,14 @@ export function Basket() {
           <div>
             <h1>
               {state === "awaiting"
-                ? "Move these units to your Clearance Basket."
+                ? `Set aside ${units(ledger.avail)} in your Clearance Basket.`
                 : state === "ended"
                   ? "The collection window has ended."
                   : "Clearance Basket details"}
             </h1>
+            {state === "awaiting" && (
+              <p>The listing becomes visible to buyers when you confirm the units are set aside.</p>
+            )}
             {state === "ended" && (
               <p>
                 {expired
@@ -633,7 +647,12 @@ export function Basket() {
             )}
           </div>
         </div>
-        <div className="basket-b">
+        <div className={"basket-b" + (state === "awaiting" ? " basket-transfer" : "")}>
+          {state === "awaiting" && (
+            <div className="basket-primary">
+              <ListingAction l={l} action="move" primary />
+            </div>
+          )}
           <Picture src={l.photos[0] || photo(l.kind)} />
           <dl>
             <dt>Product</dt>
@@ -666,7 +685,6 @@ export function Basket() {
             )}
           </dl>
           <div className="basket-acts">
-            {state === "awaiting" && <ListingAction l={l} action="move" />}
             {state === "ended" && !ledger.held && ledger.avail > 0 && (
               <ListingAction l={l} action="return" />
             )}
@@ -773,6 +791,7 @@ function ListingEditor({
     (batch && data.listings.find((l) => l.name.toLowerCase() === batch.name.toLowerCase()));
   const [step, setStep] = useState(0),
     [error, setError] = useState<{ message: string; field?: string }>();
+  const formRef = useFormErrorFocus(error);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => ({
     name: existing?.name || from?.name || batch?.name || "",
@@ -807,6 +826,35 @@ function ListingEditor({
   const minimum = ledger ? ledger.held + ledger.handed + ledger.withdrawn : 1;
   const eligibility = ELIGIBILITY.find((p) => p.id === draft.pack);
   const unitKey = batch ? "remaining" : "qty";
+  const errorField = error?.field === "qty" ? unitKey : error?.field;
+  const checkboxErrorId = prefix + "-validation-error";
+  const errorSummary = error && (
+    <p className="formerr" id={checkboxErrorId} role="alert" tabIndex={-1} data-form-error>
+      {error.message}
+    </p>
+  );
+  const showErrorSummary =
+    error &&
+    (!errorField ||
+      ![
+        "name",
+        "cat",
+        "desc",
+        "pack",
+        "orig",
+        "price",
+        unitKey,
+        "expiry",
+        "pickupUntil",
+        "pickFrom",
+        "pickTo",
+        "instr",
+        "c1",
+        "c2",
+        "c3",
+        "extra",
+      ].includes(errorField) ||
+      (batch && errorField === "expiry"));
   const todayValue = today();
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -843,7 +891,8 @@ function ListingEditor({
             : "Select the food type and storage.",
           "pack",
         );
-      if (!draft.c1 || !draft.c2) return fail("Seller declarations needed.", "pack");
+      if (!draft.c1 || !draft.c2)
+        return fail("Seller declarations needed.", !draft.c1 ? "c1" : "c2");
     }
     if (part === 1 || batch) {
       if (!(+draft.orig > 0)) return fail("Enter the original price.", "orig");
@@ -918,7 +967,7 @@ function ListingEditor({
     if (busy || !validate(step)) return;
     if (batch) {
       dialog(
-        <Confirm title="Preview and publish" action="Publish listing" submit={publish}>
+        <Confirm title="Review counted units" action="Create listing" submit={publish}>
           <div className="prevgrid">
             <Card listing={preview} seller={store} preview />
             <div className="revlist">
@@ -929,7 +978,8 @@ function ListingEditor({
             </div>
           </div>
           <Note danger>
-            The listing goes live after you confirm the units are in your Clearance Basket.
+            Next, put the counted units in your Clearance Basket and confirm they’re set aside. The
+            listing goes live after you confirm.
           </Note>
         </Confirm>,
       );
@@ -960,7 +1010,7 @@ function ListingEditor({
         id={id}
         label={label}
         hint={hint}
-        error={error?.field === (key === "qty" ? unitKey : key) ? error.message : undefined}
+        error={errorField === (key === "qty" ? unitKey : key) ? error?.message : undefined}
       >
         <input
           id={id}
@@ -1045,6 +1095,8 @@ function ListingEditor({
         <legend>Seller declarations</legend>
         <Check
           binding={prefix + ".c1"}
+          aria-invalid={errorField === "c1" || undefined}
+          aria-describedby={errorField === "c1" ? checkboxErrorId : undefined}
           checked={draft.c1}
           onChange={(event) => set("c1", event.target.checked)}
         >
@@ -1052,6 +1104,8 @@ function ListingEditor({
         </Check>
         <Check
           binding={prefix + ".c2"}
+          aria-invalid={errorField === "c2" || undefined}
+          aria-describedby={errorField === "c2" ? checkboxErrorId : undefined}
           checked={draft.c2}
           onChange={(event) => set("c2", event.target.checked)}
         >
@@ -1060,6 +1114,8 @@ function ListingEditor({
         {batch && (
           <Check
             binding={prefix + ".c3"}
+            aria-invalid={errorField === "c3" || undefined}
+            aria-describedby={errorField === "c3" ? checkboxErrorId : undefined}
             checked={draft.c3}
             onChange={(event) => set("c3", event.target.checked)}
           >
@@ -1067,6 +1123,7 @@ function ListingEditor({
           </Check>
         )}
       </fieldset>
+      {(["c1", "c2"].includes(errorField || "") || (batch && errorField === "c3")) && errorSummary}
       {eligibility && !eligibility.ok ? (
         <Note danger>This item can't be listed in the pilot. {eligibility.why}</Note>
       ) : !draft.c1 || !draft.c2 ? (
@@ -1085,7 +1142,11 @@ function ListingEditor({
       <div className="fixed">
         <b>{store.name}</b> · {store.area}
       </div>
-      <Field id={prefix + "-instr"} label="Pickup instructions">
+      <Field
+        id={prefix + "-instr"}
+        label="Pickup instructions"
+        error={errorField === "instr" ? error?.message : undefined}
+      >
         <textarea
           id={prefix + "-instr"}
           value={draft.instr}
@@ -1125,7 +1186,7 @@ function ListingEditor({
         {batch ? batch.name : existing ? "Edit listing" : "Create listing"}
       </div>
       {batch ? (
-        <Heading title="Offer counted units on Rescue" sub={batch.name} group="Rescue" />
+        <Heading title="Count stock to offer on Rescue" sub={batch.name} group="Rescue" />
       ) : (
         <h1 className="sr-only">{existing ? "Edit listing" : "Create listing"}</h1>
       )}
@@ -1144,7 +1205,13 @@ function ListingEditor({
             ))}
           </ol>
         )}
-        <form className="form task-form" id={"f-" + prefix} onSubmit={submit} noValidate>
+        <form
+          ref={formRef}
+          className="form task-form"
+          id={"f-" + prefix}
+          onSubmit={submit}
+          noValidate
+        >
           {batch ? (
             <>
               <div className="offer-sum">
@@ -1178,7 +1245,7 @@ function ListingEditor({
               <h2>Count the shelf</h2>
               <div className="qtycheck">
                 <div>
-                  <small>Received</small>
+                  <small>Recorded on arrival</small>
                   <b>{batch.qty}</b>
                 </div>
                 {input("qty", "Units you counted on the shelf", "number")}
@@ -1187,7 +1254,9 @@ function ListingEditor({
                   <b>{+draft.qty || "–"}</b>
                 </div>
               </div>
-              <p className="hint">At most {cap} can be offered.</p>
+              <p className="hint">
+                Count the units you can set aside now. At most {cap} can be offered.
+              </p>
               <h2>Price</h2>
               {pricing}
               <h2>Food rules</h2>
@@ -1208,7 +1277,11 @@ function ListingEditor({
               >
                 {dateField}
                 {collection}
-                <Field id="bl-desc" label="Description (optional)">
+                <Field
+                  id="bl-desc"
+                  label="Description (optional)"
+                  error={errorField === "desc" ? error?.message : undefined}
+                >
                   <textarea
                     id="bl-desc"
                     value={draft.desc}
@@ -1273,7 +1346,11 @@ function ListingEditor({
                 </div>
               </Field>
               {input("name", "Product name")}
-              <Field id="wz-cat" label="Category">
+              <Field
+                id="wz-cat"
+                label="Category"
+                error={errorField === "cat" ? error?.message : undefined}
+              >
                 <select
                   id="wz-cat"
                   value={draft.cat}
@@ -1283,7 +1360,11 @@ function ListingEditor({
                   <Categories rescue />
                 </select>
               </Field>
-              <Field id="wz-desc" label="Description">
+              <Field
+                id="wz-desc"
+                label="Description"
+                error={errorField === "desc" ? error?.message : undefined}
+              >
                 <textarea
                   id="wz-desc"
                   value={draft.desc}
@@ -1307,13 +1388,18 @@ function ListingEditor({
                   : "Count the units you can set aside.",
               )}
               {existing && +draft.qty > existing.total && (
-                <Check
-                  binding="wz.extra"
-                  checked={draft.countedExtra}
-                  onChange={(event) => set("countedExtra", event.target.checked)}
-                >
-                  I counted and set aside the extra units
-                </Check>
+                <>
+                  <Check
+                    binding="wz.extra"
+                    aria-invalid={errorField === "extra" || undefined}
+                    aria-describedby={errorField === "extra" ? checkboxErrorId : undefined}
+                    checked={draft.countedExtra}
+                    onChange={(event) => set("countedExtra", event.target.checked)}
+                  >
+                    I counted and set aside the extra units
+                  </Check>
+                  {errorField === "extra" && errorSummary}
+                </>
               )}
             </>
           ) : step === 2 ? (
@@ -1325,7 +1411,11 @@ function ListingEditor({
                 disabled={locked}
                 onChange={(value) => updateDate(expiry, value)}
               />
-              <Field id="wz-expiry" label="Date on the pack">
+              <Field
+                id="wz-expiry"
+                label="Date on the pack"
+                error={errorField === "expiry" ? error?.message : undefined}
+              >
                 <input
                   id="wz-expiry"
                   type="date"
@@ -1337,11 +1427,14 @@ function ListingEditor({
               </Field>
               <Check
                 binding="wz.c3"
+                aria-invalid={errorField === "c3" || undefined}
+                aria-describedby={errorField === "c3" ? checkboxErrorId : undefined}
                 checked={draft.c3}
                 onChange={(event) => set("c3", event.target.checked)}
               >
                 The printed date is legible and matches the date and type I entered
               </Check>
+              {errorField === "c3" && errorSummary}
               {dateField}
               <Disclosure
                 title="Hours, location and instructions"
@@ -1352,7 +1445,7 @@ function ListingEditor({
             </>
           ) : (
             <>
-              <h2>Review and publish</h2>
+              <h2>Review listing</h2>
               <div className="prevgrid">
                 <Card listing={preview} seller={store} preview />
                 <div className="revlist">
@@ -1367,16 +1460,13 @@ function ListingEditor({
               </div>
               {!existing && (
                 <Note danger>
-                  After publishing, confirm the physical move to your Clearance Basket.
+                  After creating the listing, set the counted units aside in your Clearance Basket
+                  and confirm to make it visible to buyers.
                 </Note>
               )}
             </>
           )}
-          {error && (
-            <p className="formerr" role="alert">
-              {error.message}
-            </p>
-          )}
+          {showErrorSummary && errorSummary}
           <div className="wnav">
             {!batch && step ? (
               <Button
@@ -1401,7 +1491,7 @@ function ListingEditor({
                   ? "Continue"
                   : existing
                     ? "Save changes"
-                    : "Publish listing"}
+                    : "Create listing"}
             </Button>
           </div>
         </form>

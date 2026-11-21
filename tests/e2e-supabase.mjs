@@ -66,9 +66,9 @@ const seller = await launch({ realClock: true }), buyer = await launch({ realClo
 let published
 try {
   await signIn(seller, sellerEmail, 'Needs your action')
-  await signIn(buyer, buyerEmail, 'Sealed pantry food')
+  await signIn(buyer, buyerEmail, 'Find food')
   await seller.hash('#/batch/02000000-0000-4000-8000-000000000002/list')
-  await until(seller, 'Offer counted units on Rescue')
+  await until(seller, 'Count stock to offer on Rescue')
   await seller.type('#bl-remaining', '2')
   await seller.type('#bl-orig', '8')
   await seller.type('#bl-price', '4')
@@ -79,7 +79,7 @@ try {
   await seller.type('#bl-pickTo', '23:59')
   await seller.eval("document.querySelector('#f-bl').requestSubmit()")
   await seller.click('[data-act=mok]')
-  await until(seller, 'Move these units')
+  await until(seller, 'The listing becomes visible to buyers when you confirm the units are set aside.')
   published = (await seller.eval('return location.hash')).split('/').pop().split('?')[0]
   await seller.click('[data-act=moved]')
   await seller.click('[data-act=mok]')

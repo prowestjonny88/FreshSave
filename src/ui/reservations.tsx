@@ -24,6 +24,7 @@ import {
   rm,
   Tabs,
   units,
+  useFormErrorFocus,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
 import { FoodForm } from "./tracking.tsx";
@@ -82,12 +83,15 @@ function Handover({ r }: { r: Reservation }) {
   const [code, setCode] = useState(""),
     [item, setItem] = useState(false),
     [paid, setPaid] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState<{ field: "checks" | "code"; message: string }>();
   const [busy, setBusy] = useState(false);
+  const formRef = useFormErrorFocus(error);
+  const checkError = error?.field === "checks" ? error.message : undefined;
   return (
     <>
       <h3 id="m-title">Complete handover</h3>
       <form
+        ref={formRef}
         id="f-handover"
         className="task-form"
         noValidate
@@ -95,7 +99,7 @@ function Handover({ r }: { r: Reservation }) {
           event.preventDefault();
           if (busy) return;
           if (!item || !paid) {
-            setError("Tick both boxes to confirm the handover.");
+            setError({ field: "checks", message: "Tick both boxes to confirm the handover." });
             return;
           }
           setBusy(true);
@@ -108,7 +112,7 @@ function Handover({ r }: { r: Reservation }) {
             close();
             notify(result.error.message);
           } else {
-            setError(result.error.message);
+            setError({ field: "code", message: result.error.message });
             setCode("");
             setItem(false);
             setPaid(false);
@@ -121,7 +125,11 @@ function Handover({ r }: { r: Reservation }) {
             Prototype hint · the sample buyer’s pickup code is <b>{r.pin}</b>.
           </Note>
         )}
-        <Field id="ho-code" label="Buyer’s pickup code" error={error}>
+        <Field
+          id="ho-code"
+          label="Buyer’s pickup code"
+          error={error?.field === "code" ? error.message : undefined}
+        >
           <input
             id="ho-code"
             inputMode="numeric"
@@ -133,12 +141,29 @@ function Handover({ r }: { r: Reservation }) {
         </Field>
         <fieldset className="handover-checks">
           <legend>Handover checks</legend>
-          <Check id="ho-item" checked={item} onChange={(event) => setItem(event.target.checked)}>
+          <Check
+            id="ho-item"
+            checked={item}
+            aria-invalid={(!!checkError && !item) || undefined}
+            aria-describedby={checkError && !item ? "ho-checks-error" : undefined}
+            onChange={(event) => setItem(event.target.checked)}
+          >
             I handed over {r.qty} × {r.terms.name}, sealed, with the printed date unchanged
           </Check>
-          <Check id="ho-pay" checked={paid} onChange={(event) => setPaid(event.target.checked)}>
+          <Check
+            id="ho-pay"
+            checked={paid}
+            aria-invalid={(!!checkError && !paid) || undefined}
+            aria-describedby={checkError && !paid ? "ho-checks-error" : undefined}
+            onChange={(event) => setPaid(event.target.checked)}
+          >
             I received {rm(r.terms.price * r.qty)} in person
           </Check>
+          {checkError && (
+            <p id="ho-checks-error" className="formerr" role="alert">
+              {checkError}
+            </p>
+          )}
         </fieldset>
         <p className="mute sm">A matching pickup code records a handover in FreshSave.</p>
         <div className="macts">

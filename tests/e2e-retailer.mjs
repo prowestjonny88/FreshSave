@@ -81,7 +81,7 @@ await b.type('#wz-expiry', d3); await b.eval(`document.querySelector('[data-b="w
 await b.type('#wz-pickupUntil', d3); await b.check('[data-b="wz.c3"]'); await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(250)
 ok((await b.text('#main')).includes('at least a day before') || (await b.text('#main')).includes('Use-by food must be collected by'), 'use-by food cannot be collected on its date')
 await b.type('#wz-pickupUntil', await b.eval(`return document.querySelector('#wz-pickupUntil').max`)); await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(300)
-ok((await b.text('#main')).includes('Review and publish'), 'valid window accepted → review')
+ok((await b.text('#main')).includes('Review listing'), 'valid window accepted → review')
 const nBatches = (await b.state()).batches.length
 await b.eval(`document.querySelector('#f-wz').requestSubmit()`); await b.sleep(500)
 st = await b.state(); const nl = st.listings[0]

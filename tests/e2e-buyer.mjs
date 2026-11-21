@@ -17,12 +17,17 @@ await b.type('#hdr-dist', 'all')
 await b.type('#q', 'cooking oil')
 ok((await b.text('#sdrop')).includes('Seri Murni'), 'and shows them again with "Show all"')
 await b.type('#q', '')
+await b.hash('#/market?browse=1&cat=pantry&sort=low&q=unmatchable-freshsave-search&offset=24')
+ok((await b.text('#main')).includes('Clear search'), 'empty named search offers to clear the query')
+await b.eval(`Array.from(document.querySelectorAll('#main button')).find(button => button.textContent.trim() === 'Clear search').click()`)
+await b.sleep(250)
+eq(await b.eval(`const p = new URLSearchParams(location.hash.split('?')[1]); return [p.get('q'), p.get('offset'), p.get('cat'), p.get('sort'), document.querySelector('#q').value]`), [null, null, 'pantry', 'low', ''], 'clearing search resets the query and page but keeps category and sort')
 
 // product page
 await b.hash('#/item/l2'); const item = await b.text('#main')
 ok(item.includes('Best before') && item.includes('Collect by'), 'product page shows date type and collect-by')
 ok(item.includes('Not verified') && item.includes('does not inspect'), 'product page states seller declarations are unverified')
-ok(item.includes('Illustrative photo'), 'generic photos are labelled illustrative')
+ok(await b.eval(`const image = document.querySelector('.gal-main img'); return image.complete && image.naturalWidth > 0 && image.alt.includes('image unavailable')`), 'with remote images blocked, the gallery renders a loaded, labelled placeholder')
 ok(/Message \(simulated\)/.test(item), 'contact is labelled simulated')
 // quantity bounds
 for (let i = 0; i < 30; i++) await b.act('qty', '[data-d="1"]')

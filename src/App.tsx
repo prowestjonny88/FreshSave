@@ -164,7 +164,10 @@ function Header() {
         </span>
         <Link to="/about">About FreshSave</Link>
       </div>
-      <header className="hdr" id="hdr">
+      <header
+        className={location.pathname.startsWith("/item/") ? "hdr hdr-product" : "hdr"}
+        id="hdr"
+      >
         <div className="hdr-top wrap">
           <Brand to={retailer ? "/dashboard" : "/market"} />
           <nav className="mnav" id="nav" aria-label="Main navigation">

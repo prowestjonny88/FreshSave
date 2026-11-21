@@ -24,7 +24,7 @@ await b.type('#bl-pack', 'chilled'); await sub('#f-bl'); ok((await b.text('#main
 await b.type('#bl-pack', 'sealed'); await b.check('[data-b="bl.c1"]'); await b.check('[data-b="bl.c2"]'); await b.check('[data-b="bl.c3"]')
 ok((await b.text('#main')).includes('Wrong date? ') || (await b.text('#main')).includes('Taken from your batch record'), 'listing date is read-only and points back to the batch record')
 eq(await b.eval(`return !!document.querySelector('#bl-expiry')`), false, 'no editable expiry field on the listing form')
-await sub('#f-bl'); ok((await b.modal()).includes('Preview and publish') && (await b.modal()).includes('goes live after you confirm'), 'preview dialog shown'); await b.act('mok'); await b.sleep(400)
+await sub('#f-bl'); ok((await b.modal()).includes('Review counted units') && (await b.modal()).includes('goes live after you confirm'), 'preview explains that visibility depends on setting the units aside'); await b.act('mok'); await b.sleep(400)
 st = await b.state(); const lst = st.listings[0]; ok(lst.batchId === bid && lst.total === 5 && lst.status === 'pending', 'listing created from batch with counted units, pending transfer')
 eq(st.batches.find((x) => x.id === bid).counted, 5, 'batch records the counted quantity')
 await b.hash(`#/batch/${bid}`); ok((await b.text('#main')).includes('Offered on Rescue') && (await b.eval(`return document.querySelector('#main').textContent`)).includes('Counted when listed'), 'batch page now shows unit accounting')

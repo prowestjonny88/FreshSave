@@ -23,6 +23,7 @@ import {
   Picture,
   ProductCell,
   Tabs,
+  useFormErrorFocus,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
 
@@ -91,6 +92,7 @@ export function FoodForm({
   });
   const [errors, setErrors] = useState<Record<string, string>>({}),
     [saving, setSaving] = useState(false);
+  const formRef = useFormErrorFocus(Object.values(errors).find(Boolean));
   const [detection, setDetection] = useState(draft.detection),
     [suggested, setSuggested] = useState(draft.suggested);
   const change = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => {
@@ -148,6 +150,7 @@ export function FoodForm({
   }
   const form = (
     <form
+      ref={formRef}
       className={popup ? "task-form" : "form task-form"}
       id={"f-" + prefix}
       noValidate
@@ -198,13 +201,15 @@ export function FoodForm({
         </p>
         <Check
           binding={prefix + ".ok"}
+          aria-invalid={!!errors.ok || undefined}
+          aria-describedby={errors.ok ? prefix + "-confirmation-error" : undefined}
           checked={values.confirmed}
           onChange={(event) => change("confirmed", event.target.checked)}
         >
           I have checked this date and its type against the pack
         </Check>
         {errors.ok && (
-          <p role="alert" className="hot">
+          <p id={prefix + "-confirmation-error"} role="alert" className="hot">
             {errors.ok}
           </p>
         )}
@@ -217,7 +222,7 @@ export function FoodForm({
         {input("date", retailer ? "Date recorded" : "Purchase date", "date")}
       </Disclosure>
       {errors.general && (
-        <p role="alert" className="hot">
+        <p role="alert" className="hot" tabIndex={-1} data-form-error>
           {errors.general}
         </p>
       )}

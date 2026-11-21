@@ -18,8 +18,8 @@ if (document.querySelectorAll('h1').length !== 1 && !location.hash.startsWith('#
 return out`
 let issues = []
 for (const role of ['individual', 'retailer']) {
-  for (const w of [1440, 1024, 768, 390]) {
-    const b = await session({ width: w, height: w < 700 ? 844 : 900 })
+  for (const w of [1440, 1024, 768, 390, 320]) {
+    const b = await session({ width: w, height: w === 320 ? 740 : w === 390 ? 844 : 900 })
     await b.login(role === 'individual' ? 'aisyah@freshsave.my' : 'pakdin@freshsave.my')
     const bad = []
     for (const p of PAGES[role]) {
@@ -31,6 +31,13 @@ for (const role of ['individual', 'retailer']) {
     const nav = await b.eval(`const n=document.querySelector('#bnav'); return getComputedStyle(n).display`)
     ok(bad.length === 0, `${role} @${w}px: no horizontal overflow on ${PAGES[role].length} pages` + (bad.length ? ' – ' + bad.join('; ') : ''))
     eq(nav, w <= 1024 ? 'flex' : 'none', `${role} @${w}px: bottom nav ${w <= 1024 ? 'shown' : 'hidden'}`)
+    if (w === 320) {
+      ok(await b.eval(`const rect = document.querySelector('button[aria-label="Account menu"]').getBoundingClientRect(); return innerWidth === 320 && rect.right <= 320 && rect.left >= 0`), `${role} @320px: account menu is wholly inside the viewport`)
+      if (role === 'retailer') {
+        await b.hash('#/listings?tab=live')
+        ok(await b.eval(`const rows = [...document.querySelectorAll('.work-table tbody tr')]; return rows.length > 0 && rows.every(row => { const units = row.querySelector('.units'); const cell = units.closest('td'); return units.getBoundingClientRect().right <= cell.getBoundingClientRect().right + 1 && units.scrollWidth <= units.clientWidth + 1; })`), 'phone listing unit summaries stay inside their cells')
+      }
+    }
     if (role === 'individual' && w === 390) {
       await b.hash('#/market')
       const market = await b.eval(`
@@ -51,6 +58,16 @@ for (const role of ['individual', 'retailer']) {
         const top = selector => document.querySelector(selector).getBoundingClientRect().top;
         return top('.product-heading') < top('.product-gallery') && top('.pickup-facts') < top('[data-act=reserve]')
           && top('.pickup-safety') < top('[data-act=reserve]') && top('[data-act=reserve]') < top('.product-support');`), 'phone product leads with title and keeps pickup and safety before Reserve')
+    }
+    if (role === 'individual' && w <= 390) {
+      await b.hash('#/item/l1')
+      await b.eval(`const jump = [...document.querySelectorAll('#main button')].find(button => button.textContent.includes('View pickup details')); jump.focus();`)
+      await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' })
+      await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+      await b.sleep(450)
+      ok(await b.eval(`const heading = document.querySelector('#pickup-heading'); const rect = heading.getBoundingClientRect(); return document.activeElement === heading && rect.top >= 0 && rect.bottom <= document.querySelector('#bnav').getBoundingClientRect().top && location.hash === '#/item/l1'`), `@${w}px: pickup link scrolls and moves keyboard focus without changing the route`)
+      await b.eval(`const reserve = document.querySelector('[data-act=reserve]'); reserve.scrollIntoView({block:'center',behavior:'instant'});`)
+      ok(await b.eval(`const reserve = document.querySelector('[data-act=reserve]'); const rect = reserve.getBoundingClientRect(); return rect.bottom < document.querySelector('#bnav').getBoundingClientRect().top && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('button') === reserve`), `@${w}px: Reserve is reachable above the fixed bottom navigation`)
     }
     ok(b.errors.length === 0, `${role} @${w}px: no JS errors` + (b.errors.length ? ' ' + b.errors[0] : ''))
     await b.close()
