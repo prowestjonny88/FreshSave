@@ -31,6 +31,27 @@ for (const role of ['individual', 'retailer']) {
     const nav = await b.eval(`const n=document.querySelector('#bnav'); return getComputedStyle(n).display`)
     ok(bad.length === 0, `${role} @${w}px: no horizontal overflow on ${PAGES[role].length} pages` + (bad.length ? ' – ' + bad.join('; ') : ''))
     eq(nav, w <= 1024 ? 'flex' : 'none', `${role} @${w}px: bottom nav ${w <= 1024 ? 'shown' : 'hidden'}`)
+    if (role === 'individual' && w === 390) {
+      await b.hash('#/market')
+      const market = await b.eval(`
+        const card = document.querySelector('#home .card');
+        const navTop = document.querySelector('#bnav').getBoundingClientRect().top;
+        return ['.nm', '.price'].every(selector => {
+          const bounds = card.querySelector(selector).getBoundingClientRect();
+          return bounds.top >= 0 && bounds.bottom <= navTop;
+        });`)
+      ok(market, 'phone market shows the first offer name and price above the bottom navigation')
+      ok(await b.eval(`return [...document.querySelectorAll('#home .card .dtype')].every(label => label.scrollWidth <= label.clientWidth + 1)`), 'phone cards show the full printed date type')
+      await b.eval(`document.querySelector('#q').focus()`)
+      await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+      await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+      ok(await b.eval(`return document.activeElement.matches('#sform button[type=submit]:focus-visible')`), 'keyboard focus moves from the search field to its button and stays visible')
+      await b.hash('#/item/l1')
+      ok(await b.eval(`
+        const top = selector => document.querySelector(selector).getBoundingClientRect().top;
+        return top('.product-heading') < top('.product-gallery') && top('.pickup-facts') < top('[data-act=reserve]')
+          && top('.pickup-safety') < top('[data-act=reserve]') && top('[data-act=reserve]') < top('.product-support');`), 'phone product leads with title and keeps pickup and safety before Reserve')
+    }
     ok(b.errors.length === 0, `${role} @${w}px: no JS errors` + (b.errors.length ? ' ' + b.errors[0] : ''))
     await b.close()
   }

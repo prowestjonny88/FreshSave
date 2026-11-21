@@ -285,41 +285,29 @@ export function Market() {
   if (isHome)
     return (
       <div id="home">
-        {first && (
-          <section className="strip-act">
-            <div className="wrap">
-              <span className="kicker">Needs you today</span>
+        <div className="wrap market-home">
+          <header className="market-intro">
+            <h1>Find food</h1>
+            <p>Reserve sealed surplus nearby. Collect and pay in person.</p>
+          </header>
+          {first && (
+            <section className="strip-act" aria-label="Needs you today">
               <Link className={"sa " + first.tone} to={first.to}>
-                <span>
-                  <b>{first.title}</b>
-                  <small>{first.detail}</small>
-                </span>
+                <span className="kicker">Needs you today</span>
+                <b>{first.title}</b>
+                <small>{first.detail}</small>
               </Link>
               {actions.length > 1 && (
                 <Link className="link sm" to="/dashboard">
                   +{actions.length - 1} more on Today
                 </Link>
               )}
-            </div>
-          </section>
-        )}
-        <section className="hero compact">
-          <div className="wrap hero-in">
-            <div className="hero-t">
-              <span className="eyebrow">Rescue · pickup marketplace</span>
-              <h1>Sealed pantry food, collected near you.</h1>
-              <p>
-                Reserve online, collect in person, pay at pickup. {nearby.length} listings within{" "}
-                {distance === "all" ? "any distance" : `~${distance} km`}.
-              </p>
-            </div>
-          </div>
-        </section>
-        <section className="band">
-          <div className="wrap">
+            </section>
+          )}
+          <section className="market-offers" aria-labelledby="nearby-heading">
             <div className="sec-h">
               <div>
-                <h2>Near {areaOf(data).short}</h2>
+                <h2 id="nearby-heading">Near {areaOf(data).short}</h2>
                 <p>Nearest first · distances are approximate</p>
               </div>
               <span className="sec-links">
@@ -337,8 +325,8 @@ export function Market() {
               </span>
             </div>
             {nearby.length ? cards(nearby.slice(0, 8)) : noResults}
-          </div>
-        </section>
+          </section>
+        </div>
         <section className="band alt">
           <div className="wrap">
             <Disclosure title="How pickup works" className="flat">
@@ -590,10 +578,16 @@ export function Item() {
   return (
     <>
       <div className="crumbs">
-        <Link to="/market">Rescue</Link> › {catLabel(listing.cat)} › {listing.name}
+        <Link to="/market">Rescue</Link> › {catLabel(listing.cat)}
       </div>
-      <div className="detail">
-        <div>
+      <article className="detail product-detail">
+        <header className="product-heading">
+          <h1 className="d-title">{listing.name}</h1>
+          <div className="d-price">
+            <b>{rm(listing.price)}</b> <s>{rm(listing.orig)}</s>
+          </div>
+        </header>
+        <div className="product-gallery">
           <div
             role="group"
             aria-label="Product photos"
@@ -647,40 +641,41 @@ export function Item() {
               </div>
             )}
           </div>
-          <div className="box mt-4">
-            <h3>Description</h3>
-            <p>{listing.desc}</p>
-          </div>
-          <div className="box safety">
-            <h3>Date, storage &amp; safety</h3>
+        </div>
+        <section className="box pickup-panel" aria-labelledby="pickup-heading">
+          <h2 id="pickup-heading">Reserve for pickup</h2>
+          <dl className="deflist tight pickup-facts">
+            <dt>{dateWord(listing.expiryType)}</dt>
+            <dd>
+              <b>{formatDate(listing.expiry)}</b>
+            </dd>
+            <dt>Collect by</dt>
+            <dd>
+              <b>{formatDeadline(listingCutoff(listing))}</b>
+              <br />
+              {formatTime(listing.pickFrom)}–{formatTime(listing.pickTo)} daily
+            </dd>
+            {seller && (
+              <>
+                <dt>Pickup</dt>
+                <dd>
+                  {seller.name}
+                  <br />
+                  {seller.area}
+                </dd>
+              </>
+            )}
+            <dt>Instructions</dt>
+            <dd>{listing.instr}</dd>
+          </dl>
+          <div className="pickup-safety">
+            <div>
+              <h3>Food safety</h3> <Badge tone="y">Not verified</Badge>
+            </div>
             <p>
-              {dateWord(listing.expiryType)} {formatDate(listing.expiry)}{" "}
-              <Badge tone="y">Not verified</Badge>
-            </p>
-            <Note>
               FreshSave does not inspect, test or certify food. Check the seal, printed date, and
               allergen label at pickup.
-            </Note>
-          </div>
-        </div>
-        <div>
-          <h1 className="d-title">{listing.name}</h1>
-          <div className="d-price">
-            <b>{rm(listing.price)}</b> <s>{rm(listing.orig)}</s>
-          </div>
-          <div className="facts">
-            <div>
-              <small>{dateWord(listing.expiryType)}</small>
-              <b>{formatDate(listing.expiry)}</b>
-            </div>
-            <div>
-              <small>Available</small>
-              <b>{ledger.avail}</b>
-            </div>
-            <div>
-              <small>Collect by</small>
-              <b>{formatDeadline(listingCutoff(listing))}</b>
-            </div>
+            </p>
           </div>
           {myRequests.map((record) => (
             <Note key={record.id}>
@@ -690,91 +685,71 @@ export function Item() {
               </Link>
             </Note>
           ))}
-          <div className="box">
-            <h3>Reserve for pickup</h3>
-            {own ? (
-              <Note>
-                This is your listing.{" "}
-                <Link className="link" to="/listings">
-                  Manage listings
-                </Link>
-              </Note>
-            ) : !live ? (
-              <Note danger>This listing is unavailable.</Note>
-            ) : (
-              <>
-                <div className="resv-row">
-                  <div>
-                    <b>Quantity</b>
-                    <div className="mute sm">{ledger.avail} units available</div>
-                  </div>
-                  <div className="qty">
-                    <Button
-                      act="qty"
-                      data-d="-1"
-                      className="hbtn"
-                      aria-label="Decrease quantity"
-                      onClick={() => setQty(Math.max(1, count - 1))}
-                    >
-                      −
-                    </Button>
-                    <b id="qtyv" aria-live="polite">
-                      {count}
-                    </b>
-                    <Button
-                      act="qty"
-                      data-d="1"
-                      className="hbtn"
-                      aria-label="Increase quantity"
-                      onClick={() => setQty(Math.min(ledger.avail, count + 1))}
-                    >
-                      +
-                    </Button>
-                  </div>
+          {own ? (
+            <Note>
+              This is your listing. {ledger.avail} units available.{" "}
+              <Link className="link" to="/listings">
+                Manage listings
+              </Link>
+            </Note>
+          ) : !live ? (
+            <Note danger>This listing is unavailable.</Note>
+          ) : (
+            <>
+              <div className="resv-row">
+                <div>
+                  <b>Quantity</b>
+                  <div className="mute sm">{ledger.avail} units available</div>
                 </div>
-                <dl className="deflist tight">
-                  <dt>Collect by</dt>
-                  <dd>
-                    {formatDeadline(listingCutoff(listing))}
-                    <br />
-                    {formatTime(listing.pickFrom)}–{formatTime(listing.pickTo)} daily
-                  </dd>
-                  <dt>Pickup</dt>
-                  <dd>
-                    {seller?.name}
-                    <br />
-                    {seller?.area}
-                  </dd>
-                  <dt>Instructions</dt>
-                  <dd>{listing.instr}</dd>
-                </dl>
-                <div className="total">
-                  <span>Total · pay in person</span>
-                  <b>{rm(listing.price * count)}</b>
+                <div className="qty">
+                  <Button
+                    act="qty"
+                    data-d="-1"
+                    className="hbtn"
+                    aria-label="Decrease quantity"
+                    onClick={() => setQty(Math.max(1, count - 1))}
+                  >
+                    −
+                  </Button>
+                  <b id="qtyv" aria-live="polite">
+                    {count}
+                  </b>
+                  <Button
+                    act="qty"
+                    data-d="1"
+                    className="hbtn"
+                    aria-label="Increase quantity"
+                    onClick={() => setQty(Math.min(ledger.avail, count + 1))}
+                  >
+                    +
+                  </Button>
                 </div>
-                {tooLate && (
-                  <Note danger>The collection window closes too soon to reserve this.</Note>
-                )}
-                <Button
-                  act="reserve"
-                  className="btn block sage"
-                  disabled={tooLate}
-                  onClick={reserve}
-                >
-                  Reserve
-                </Button>
-              </>
-            )}
-          </div>
+              </div>
+              <div className="total">
+                <span>Total · pay in person</span>
+                <b>{rm(listing.price * count)}</b>
+              </div>
+              {tooLate && (
+                <Note danger>The collection window closes too soon to reserve this.</Note>
+              )}
+              <Button act="reserve" className="btn block sage" disabled={tooLate} onClick={reserve}>
+                Reserve
+              </Button>
+            </>
+          )}
+        </section>
+        <div className="product-support">
+          <section className="box">
+            <h2>Description</h2>
+            <p>{listing.desc}</p>
+          </section>
           {seller && (
             <div className="box">
-              <h3>Seller</h3>
+              <h2>Seller</h2>
               <div className="seller">
                 <Avatar name={seller.name} />
                 <div>
                   <b>{seller.name}</b>
-                  <br />
-                  {seller.area}
                 </div>
               </div>
               <div className="row-acts">
@@ -790,7 +765,7 @@ export function Item() {
             </div>
           )}
         </div>
-      </div>
+      </article>
       {sections.map(
         ([title, items]) =>
           !!items.length && (

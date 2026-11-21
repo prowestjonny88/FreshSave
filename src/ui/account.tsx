@@ -54,23 +54,64 @@ export function Dashboard() {
         ["Choose your area", "/market", !!data.area],
         ["Browse food nearby", "/market", data.reservations.length > 0],
       ] as const);
+  const taskLabels: Record<string, string> = {
+    "/reservations?view=seller&tab=pending": "Review requests",
+    "/reservations?view=seller&tab=confirmed": "View pickups",
+    "/listings?tab=ended": "Review ended listings",
+    "/basket": "Open Clearance Basket",
+    "/batches": "Count stock",
+    "/inventory?st=expired": "Review past dates",
+    "/inventory?st=d3": "See food to use soon",
+    "/reservations?tab=pending": "View pending requests",
+  };
   const queue = (items: typeof actions) => (
     <ul className="acts">
       {items.map((item) => (
         <li className={item.tone} key={item.title}>
-          <span className="ai" aria-hidden="true">
-            •
-          </span>
+          <span className="ai" aria-hidden="true" />
           <div>
             <b>{item.title}</b>
             <small>{item.detail}</small>
           </div>
-          <Link className="btn sm sec" to={item.to}>
-            Review
+          <Link className="link today-task" to={item.to}>
+            {item.to.startsWith("/reservation/")
+              ? "View pickup"
+              : taskLabels[item.to] || "View details"}
           </Link>
         </li>
       ))}
     </ul>
+  );
+  const onboarding = user.onboard && (
+    <section className="panel onboard">
+      <div className="panel-h">
+        <h3>Welcome to FreshSave</h3>
+        <Button
+          className="link sm"
+          act="onboardoff"
+          onClick={() => run("hideOnboarding", undefined)}
+        >
+          Hide
+        </Button>
+      </div>
+      <p className="mute">
+        Track expiry dates and rescue sealed surplus. {steps.filter(([, , done]) => done).length}/3
+        steps done.
+      </p>
+      <ol className="ob">
+        {steps.map(([label, to, done]) => (
+          <li className={done ? "done" : ""} key={label}>
+            <span className="obn">{done ? "✓" : ""}</span>
+            <b>{label}</b>
+            {!done && (
+              <Link className="btn sm sec" to={to}>
+                Open
+              </Link>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
   return (
     <>
@@ -88,38 +129,8 @@ export function Dashboard() {
           </p>
         </div>
       </div>
-      {user.onboard && (
-        <section className="panel onboard">
-          <div className="panel-h">
-            <h3>Welcome to FreshSave</h3>
-            <Button
-              className="link sm"
-              act="onboardoff"
-              onClick={() => run("hideOnboarding", undefined)}
-            >
-              Hide
-            </Button>
-          </div>
-          <p className="mute">
-            Track expiry dates and rescue sealed surplus.{" "}
-            {steps.filter(([, , done]) => done).length}/3 steps done.
-          </p>
-          <ol className="ob">
-            {steps.map(([label, to, done]) => (
-              <li className={done ? "done" : ""} key={label}>
-                <span className="obn">{done ? "✓" : ""}</span>
-                <b>{label}</b>
-                {!done && (
-                  <Link className="btn sm sec" to={to}>
-                    Open
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      <section className="panel">
+      {!actions.length && onboarding}
+      <section className="panel today-queue">
         <div className="panel-h">
           <h3>{retailer ? "Needs your action" : "Needs you today"}</h3>
         </div>
@@ -141,6 +152,7 @@ export function Dashboard() {
           </div>
         )}
       </section>
+      {!!actions.length && onboarding}
       {retailer && (
         <p className="snapline">
           <Link to="/listings">
@@ -154,7 +166,7 @@ export function Dashboard() {
         </p>
       )}
       {!!track.length && (
-        <section className="panel">
+        <section className="panel today-secondary">
           <div className="panel-h">
             <h3>{retailer ? "Batches dated within 7 days" : "Use soon"}</h3>
             <Link className="link sm" to={retailer ? "/batches" : "/inventory?st=d7"}>
@@ -178,7 +190,7 @@ export function Dashboard() {
         </section>
       )}
       {!!nearby.length && (
-        <section className="panel">
+        <section className="panel today-secondary">
           <div className="panel-h">
             <h3>Nearby on Rescue</h3>
             <Link className="link sm" to="/market">

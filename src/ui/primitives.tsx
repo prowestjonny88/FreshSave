@@ -477,7 +477,6 @@ export function Card({
     <>
       <div className="im">
         <Picture src={photos[0] || photo(listing.kind)} alt={name} loading="lazy" />
-        {discount > 0 && <span className="badge">-{discount}%</span>}
         {!photos.length && <span className="illus">Illustrative photo</span>}
       </div>
       <div className="bd">
@@ -485,21 +484,26 @@ export function Card({
         <div className="price">
           <b>{rm(price)}</b>
           {orig > 0 && <s>{rm(orig)}</s>}
+          {discount > 0 && <span className="card-savings">−{discount}%</span>}
         </div>
         <div className="meta">{seller?.name}</div>
         <div className="meta">
           {distance !== undefined && <>≈{distance} km · </>}
           {listing.units?.avail ?? listing.total} left
         </div>
-        <div className="meta">
-          <span className={"dtype" + (expiryType === "use-by" ? " use" : "")}>
-            {dateWord(expiryType)}
-          </span>{" "}
-          {formatDate(expiry)}
+        <div className="card-dates">
+          <div className="card-printed-date">
+            <span className={"dtype" + (expiryType === "use-by" ? " use" : "")}>
+              {dateWord(expiryType)}
+            </span>{" "}
+            <time dateTime={expiry}>{formatDate(expiry)}</time>
+          </div>
+          {listing.pickupUntil && listing.pickTo && (
+            <div className="card-pickup">
+              <b>Collect by</b> {formatDeadline(listingCutoff(listing))}
+            </div>
+          )}
         </div>
-        {listing.pickupUntil && listing.pickTo && (
-          <div className="meta collect">Collect by {formatDeadline(listingCutoff(listing))}</div>
-        )}
       </div>
     </>
   );

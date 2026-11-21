@@ -7,9 +7,15 @@
   --color-freshsave: #cc4a30;
   --color-freshsave-green: #3f7350;
   --color-freshsave-ink: #252525;
+  --color-freshsave-paper: #faf8f4;
+  --color-freshsave-line: #e8e3db;
   --radius-control: 6px;
+  --radius-panel: 12px;
   --container-shell: 1240px;
   --spacing-gutter: 24px;
+  --spacing-section: 28px;
+  --spacing-fields: 16px;
+  --text-caption: 0.8125rem;
 }
 
 @layer base {

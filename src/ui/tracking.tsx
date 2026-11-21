@@ -147,7 +147,12 @@ export function FoodForm({
       navigate(retailer ? "/batches" : "/inventory?new=" + result.value);
   }
   const form = (
-    <form className={popup ? "" : "form"} id={"f-" + prefix} noValidate onSubmit={submit}>
+    <form
+      className={popup ? "task-form" : "form task-form"}
+      id={"f-" + prefix}
+      noValidate
+      onSubmit={submit}
+    >
       {!popup && <h2>{retailer ? "Batch details" : "Food details"}</h2>}
       {input("name", "Product name")}
       <div className="cols">

@@ -172,7 +172,7 @@ function Header() {
           </nav>
           <div className="top-acts">
             <Link
-              className="btn sell-btn"
+              className="btn sec sell-btn"
               id="cta"
               aria-label={retailer ? "Add stock" : "Add food"}
               to="/scan"

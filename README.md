@@ -2,6 +2,8 @@
 
 FreshSave tracks food dates and lets buyers reserve sealed surplus from local retailers for pickup. The frontend is a React and TypeScript app built with Vite and styled with Tailwind CSS.
 
+See [what FreshSave learned from UM Marketspace](docs/um-marketspace-learnings.md) for the design decisions behind the visual redesign.
+
 ## Run the standalone demo on Windows
 
 Install Node.js 22.18 or newer and pnpm. From the project directory, run:

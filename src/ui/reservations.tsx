@@ -89,6 +89,7 @@ function Handover({ r }: { r: Reservation }) {
       <h3 id="m-title">Complete handover</h3>
       <form
         id="f-handover"
+        className="task-form"
         noValidate
         onSubmit={async (event) => {
           event.preventDefault();
@@ -130,12 +131,15 @@ function Handover({ r }: { r: Reservation }) {
             onChange={(event) => setCode(event.target.value)}
           />
         </Field>
-        <Check id="ho-item" checked={item} onChange={(event) => setItem(event.target.checked)}>
-          I handed over {r.qty} × {r.terms.name}, sealed, with the printed date unchanged
-        </Check>
-        <Check id="ho-pay" checked={paid} onChange={(event) => setPaid(event.target.checked)}>
-          I received {rm(r.terms.price * r.qty)} in person
-        </Check>
+        <fieldset className="handover-checks">
+          <legend>Handover checks</legend>
+          <Check id="ho-item" checked={item} onChange={(event) => setItem(event.target.checked)}>
+            I handed over {r.qty} × {r.terms.name}, sealed, with the printed date unchanged
+          </Check>
+          <Check id="ho-pay" checked={paid} onChange={(event) => setPaid(event.target.checked)}>
+            I received {rm(r.terms.price * r.qty)} in person
+          </Check>
+        </fieldset>
         <p className="mute sm">A matching pickup code records a handover in FreshSave.</p>
         <div className="macts">
           <Button className="btn sec" onClick={close}>
@@ -455,7 +459,7 @@ export function ReservationList() {
       />
       {displayed.length ? (
         <div className="tblwrap">
-          <table className="tbl">
+          <table className="tbl work-table">
             <thead>
               <tr>
                 <th>Product (agreed terms)</th>
@@ -491,7 +495,7 @@ export function ReservationList() {
                   <td data-l="Quantity">
                     {r.qty} × · {rm(r.qty * r.terms.price)}
                   </td>
-                  <td data-l="When">
+                  <td data-l="When" className="work-deadline">
                     <div className="tcell">
                       {r.status === "pending" ? (
                         <b>Respond by {formatDeadline(r.respondBy)}</b>

@@ -133,7 +133,7 @@ export function Stock() {
       )}
       {rows.length ? (
         <div className="tblwrap">
-          <table className="tbl">
+          <table className="tbl work-table">
             <thead>
               <tr>
                 <th>Product</th>
@@ -426,7 +426,7 @@ function ListingTable({ listings, basket }: { listings: Listing[]; basket?: bool
     );
   return (
     <div className="tblwrap">
-      <table className="tbl">
+      <table className="tbl work-table">
         <thead>
           <tr>
             <th>Product</th>
@@ -1131,16 +1131,20 @@ function ListingEditor({
       )}
       <div className="wiz">
         {!batch && (
-          <div className="wsteps">
+          <ol className="wsteps" aria-label="Listing steps">
             {["Product", "Price and units", "Date and collection", "Review"].map((label, i) => (
-              <div key={label} className={i === step ? "cur" : i < step ? "done" : ""}>
-                <b>{i + 1}</b>
+              <li
+                key={label}
+                aria-current={i === step ? "step" : undefined}
+                className={i === step ? "cur" : i < step ? "done" : ""}
+              >
+                <b aria-hidden="true">{i + 1}</b>
                 <span>{label}</span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         )}
-        <form className="form" id={"f-" + prefix} onSubmit={submit} noValidate>
+        <form className="form task-form" id={"f-" + prefix} onSubmit={submit} noValidate>
           {batch ? (
             <>
               <div className="offer-sum">
@@ -1401,10 +1405,10 @@ function ListingEditor({
             </Button>
           </div>
         </form>
-        <div className="side-prev">
-          <h4>Listing preview</h4>
+        <aside className="side-prev" aria-labelledby="listing-preview-heading">
+          <h4 id="listing-preview-heading">Listing preview</h4>
           <Card listing={preview} seller={store} preview />
-        </div>
+        </aside>
       </div>
     </>
   );
