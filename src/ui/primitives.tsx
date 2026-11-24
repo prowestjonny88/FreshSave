@@ -12,7 +12,7 @@ import { Link, useSearchParams } from "react-router";
 import { CATEGORIES, photo, RESCUE_CATS, catLabel } from "../data.js";
 import type { Listing, Store, UnitLedger } from "../domain/model.ts";
 import type { DateType } from "../domain/time.ts";
-import { STORE_ZONE, daysUntil, storeTime } from "../domain/time.ts";
+import { STORE_ZONE, daysUntil, formatDeadline, storeTime } from "../domain/time.ts";
 import type { Result } from "../services/contracts.ts";
 import unavailableImage from "../image-unavailable.svg";
 import { useUI } from "./state.tsx";
@@ -34,14 +34,7 @@ export const formatTime = (value: string) =>
     minute: "2-digit",
     timeZone: STORE_ZONE,
   });
-export const formatDeadline = (value: number) =>
-  new Date(value).toLocaleString("en-MY", {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: STORE_ZONE,
-  });
+export { formatDeadline } from "../domain/time.ts";
 export const listingCutoff = (l: Listing) => storeTime(l.pickupUntil, l.pickTo);
 export const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
 export const initials = (name: string) =>
@@ -342,11 +335,13 @@ export function DateTypeFields({
   value,
   onChange,
   disabled,
+  error,
 }: {
   prefix: string;
-  value: DateType;
+  value: DateType | "";
   onChange: (value: DateType) => void;
   disabled?: boolean;
+  error?: string;
 }) {
   return (
     <div className="seg-radio" role="radiogroup" aria-label="Date type on the pack">
@@ -359,12 +354,19 @@ export function DateTypeFields({
             value={type}
             checked={value === type}
             disabled={disabled}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? prefix + "-date-type-error" : undefined}
             onChange={() => onChange(type)}
           />
           <b>{dateWord(type)}</b>
           <small>{type === "use-by" ? "A safety date" : "A quality date"}</small>
         </label>
       ))}
+      {error && (
+        <p id={prefix + "-date-type-error"} className="hot date-type-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -557,7 +559,7 @@ export function Card({
           </div>
           {listing.pickupUntil && listing.pickTo && (
             <div className="card-pickup">
-              <b>Collect by</b> {formatDeadline(listingCutoff(listing))}
+              <b>Listing cutoff</b> {formatDeadline(listingCutoff(listing))}
             </div>
           )}
         </div>

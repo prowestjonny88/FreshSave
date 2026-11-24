@@ -1,4 +1,4 @@
-import { daysUntil } from "./time.ts";
+import { daysUntil, formatDeadline } from "./time.ts";
 import { listingStatus } from "./model.ts";
 import type { ViewData } from "../services/contracts.ts";
 import { LOCATIONS } from "../data.js";
@@ -53,21 +53,19 @@ export function needsToday(data: ViewData) {
     .filter((r) => r.status === "confirmed")
     .sort((a, b) => a.collectBy - b.collectBy);
   const actions: { title: string; detail: string; to: string; tone: string }[] = [];
-  const due = (time: number) =>
-    new Date(time).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" });
   const add = (title: string, detail: string, to: string, tone = "warn") =>
     actions.push({ title, detail, to, tone });
   if (seller && pending.length)
     add(
       `${pending.length} request${pending.length === 1 ? "" : "s"} to accept or decline`,
-      "Respond by " + due(pending[0].respondBy),
+      "Respond by " + formatDeadline(pending[0].respondBy),
       "/reservations?view=seller&tab=pending",
       "hot",
     );
   if (ready.length)
     add(
       seller ? `${ready.length} pickup waiting for handover` : "Collect " + ready[0].terms.name,
-      "Collect by " + due(ready[0].collectBy),
+      "Pickup deadline: " + formatDeadline(ready[0].collectBy),
       seller ? "/reservations?view=seller&tab=confirmed" : "/reservation/" + ready[0].id,
       "hot",
     );

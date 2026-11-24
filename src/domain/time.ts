@@ -10,6 +10,16 @@ export interface PickupWindow {
   until: string;
 }
 
+export function formatDeadline(value: number) {
+  return new Date(value).toLocaleString("en-MY", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: STORE_ZONE,
+  });
+}
+
 export function storeDay(now: number): string {
   // Malaysia observes UTC+08:00 year-round.
   return new Date(now + 8 * HOUR).toISOString().slice(0, 10);

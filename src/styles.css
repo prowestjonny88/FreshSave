@@ -414,7 +414,7 @@ a.stat.warn,.stat.warn{background:var(--yel-l)}.stat.warn b{color:var(--yel-d)}
 .modal p{color:var(--char);margin-top:6px}
 .mbody .note{margin-top:12px}
 .macts{display:flex;gap:10px;justify-content:flex-end;margin-top:24px;flex-wrap:wrap}
-.toasts{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toasts{position:fixed;inset-inline:0;bottom:26px;z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .toast{background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);display:flex;gap:8px;align-items:center;animation:tin .2s ease;max-width:92vw;font-weight:500}
 @keyframes tin{from{opacity:0;transform:translateY(8px)}}
 
@@ -509,8 +509,8 @@ a.stat.warn,.stat.warn{background:var(--yel-l)}.stat.warn b{color:var(--yel-d)}
 .sc-opt h3{display:flex;gap:8px;align-items:center}
 .sc-opt p{color:var(--char);flex:1}
 .qtycheck{display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap;background:var(--bg2);border-radius:var(--r);padding:13px 16px}
-.qtycheck>div:not(:nth-child(3)){min-width:120px}
-.qtycheck>div:nth-child(3){flex:1;min-width:200px}
+.qtycheck>div:not(.fld){min-width:120px}
+.qtycheck .fld{flex:1;min-width:200px}
 .qtycheck .fld{margin-top:0}
 .qtycheck small{display:block;color:var(--mute);font-size:12.5px}.qtycheck b{font-size:24px}
 .qtycheck>.ico{color:var(--mute)}
@@ -828,6 +828,7 @@ a.stat.warn,.stat.warn{background:var(--yel-l)}.stat.warn b{color:var(--yel-d)}
   #main{padding-bottom:96px!important}
   #main[data-page=market]{padding-bottom:0!important}
   .toasts{bottom:78px}
+  .toast:not(.has-undo){position:fixed;top:max(8px,env(safe-area-inset-top));inset-inline:0;margin-inline:auto;width:max-content}
   .foot{padding-bottom:80px}
   .hs-in{flex-wrap:wrap;gap:8px;padding-top:8px;padding-bottom:8px}
   .hs-in .searchbox{flex:1 1 100%}
@@ -870,7 +871,7 @@ a.stat.warn,.stat.warn{background:var(--yel-l)}.stat.warn b{color:var(--yel-d)}
 }
 
 .srow{flex-wrap:wrap}
-@media (max-width:560px){.qtycheck>.ico{display:none}.qtycheck{gap:10px}.qtycheck>div:nth-child(3){min-width:0;flex:1 1 100%}}
+@media (max-width:560px){.qtycheck>.ico{display:none}.qtycheck{gap:10px}.qtycheck .fld{min-width:0;flex:1 1 100%}}
 
 .remind>span{flex:1 1 240px;min-width:0}.remind .ico{flex:none}
 /* tables become stacked cards up to 900px so no column or action is hidden behind a horizontal scroll */
@@ -1048,6 +1049,12 @@ a.stat.warn,.stat.warn{background:var(--yel-l)}.stat.warn b{color:var(--yel-d)}
 .task-form .confirm-date .fld { margin-top: 10px; }
 .task-form .macts, .task-form .wnav { margin-top: var(--spacing-fields); padding-top: var(--spacing-fields); border-top: 1px solid var(--color-freshsave-line); }
 .task-form .macts { justify-content: space-between; }
+.date-type-error { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .modal:has(.food-form-actions) { max-height: 90dvh; padding-bottom: 0; }
+  .task-form .food-form-actions { position: sticky; bottom: 0; z-index: 1; background: var(--surface); padding-block: 12px; }
+  .task-form:has(.food-form-actions) :is(input, select, summary) { scroll-margin-block-end: 74px; }
+}
 .task-form .formerr { margin-top: 12px; }
 .handover-checks { margin-top: var(--spacing-fields); padding: 9px 12px; border: 1px solid var(--color-freshsave-line); border-radius: var(--radius-control); }
 .handover-checks legend { padding: 0 4px; font-size: var(--text-caption); font-weight: 700; }

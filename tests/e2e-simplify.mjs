@@ -23,7 +23,7 @@ ok(!(await b.has('.quick-acts')), 'Today has no buttons that repeat the header a
 ok((await vis(b, '.acts > li')) <= 3, 'Today shows at most three actions at once')
 ok((await b.eval(`return !document.querySelector('.fold details').open`)), 'recent activity is collapsed')
 // My food: four tabs, one primary action per row, secondary actions in a menu
-await b.hash('#/inventory')
+await b.hash('#/inventory?st=d7')
 eq(await vis(b, '.tabs .tab'), 4, 'My food has four tabs')
 ok((await vis(b, 'tbody tr:first-child .acts-cell > .ibtn, tbody tr:first-child .acts-cell > button.ibtn')) <= 1, 'each row shows one primary action')
 ok(!(await vis(b, 'tbody tr:first-child [data-act=invdel]')), 'delete is hidden until the menu opens')

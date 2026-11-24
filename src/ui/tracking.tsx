@@ -86,7 +86,7 @@ export function FoodForm({
     cat: draft.cat || "",
     qty: String(draft.qty || 1),
     expiry: draft.expiry || "",
-    expiryType: draft.expiryType || "best-before",
+    expiryType: draft.expiryType ?? ("" as DateType | ""),
     date: draft.date || today(),
     confirmed: false,
   });
@@ -124,9 +124,20 @@ export function FoodForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
+    if (!values.expiryType) {
+      setErrors(
+        values.name.trim().length < 2
+          ? { name: "Enter the product name." }
+          : !values.cat
+            ? { cat: "Choose a category." }
+            : { expiryType: "Choose the date type printed on the pack." },
+      );
+      return;
+    }
     setSaving(true);
     const payload: FoodInput & { id?: string; source?: string } = {
       ...values,
+      expiryType: values.expiryType,
       id: draft.id,
       source: draft.source,
       qty: Number(values.qty),
@@ -177,6 +188,7 @@ export function FoodForm({
         <DateTypeFields
           prefix={prefix}
           value={values.expiryType}
+          error={errors.expiryType}
           onChange={(value) => change("expiryType", value)}
         />
         {input(
@@ -226,7 +238,7 @@ export function FoodForm({
           {errors.general}
         </p>
       )}
-      <div className={popup ? "macts" : "wnav"}>
+      <div className={popup ? "macts food-form-actions" : "wnav"}>
         {popup ? (
           <Button className="btn sec" act="mclose" onClick={close}>
             Cancel
@@ -800,7 +812,19 @@ export function Inventory() {
                   </td>
                   <td data-l="" className="act-c">
                     <div className="acts-cell tight">
-                      {item.status === "active" ? (
+                      {item.status === "active" &&
+                      item.expiryType === "use-by" &&
+                      daysUntil(item.expiry, Date.now()) < 0 ? (
+                        <Button
+                          className="ibtn"
+                          act="invdone"
+                          data-id={item.id}
+                          data-s="discarded"
+                          onClick={() => useFood(item, "discarded")}
+                        >
+                          Discard
+                        </Button>
+                      ) : item.status === "active" ? (
                         <Button
                           className="ibtn go"
                           act="invdone"
@@ -826,14 +850,26 @@ export function Inventory() {
                       <Menu>
                         {item.status === "active" && (
                           <>
-                            <Button
-                              act="invdone"
-                              data-id={item.id}
-                              data-s="discarded"
-                              onClick={() => useFood(item, "discarded")}
-                            >
-                              Discard
-                            </Button>
+                            {item.expiryType === "use-by" &&
+                            daysUntil(item.expiry, Date.now()) < 0 ? (
+                              <Button
+                                act="invdone"
+                                data-id={item.id}
+                                data-s="consumed"
+                                onClick={() => useFood(item, "consumed")}
+                              >
+                                Mark as used
+                              </Button>
+                            ) : (
+                              <Button
+                                act="invdone"
+                                data-id={item.id}
+                                data-s="discarded"
+                                onClick={() => useFood(item, "discarded")}
+                              >
+                                Discard
+                              </Button>
+                            )}
                             <Button
                               act="invedit"
                               onClick={() => dialog(<FoodForm popup draft={draftFor(item)} />)}

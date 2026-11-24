@@ -35,6 +35,8 @@ export function Provider({ services, children }: { services: Services; children:
   const priorFocus = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const key = location.pathname + location.search;
+  const retailerDashboard =
+    location.pathname === "/dashboard" && view?.data.session?.user.role === "retailer";
   const refresh = () => setRevision((value) => value + 1);
 
   useEffect(() => services.subscribe(refresh), [services]);
@@ -42,7 +44,7 @@ export function Provider({ services, children }: { services: Services; children:
     window.addEventListener("focus", refresh);
     const reservationScreen = /^\/reservations?(?:\/|$)/.test(location.pathname);
     const timer =
-      services.mode === "demo" || reservationScreen
+      services.mode === "demo" || reservationScreen || retailerDashboard
         ? setInterval(
             () => {
               if (!document.hidden) refresh();
@@ -54,7 +56,7 @@ export function Provider({ services, children }: { services: Services; children:
       window.removeEventListener("focus", refresh);
       clearInterval(timer);
     };
-  }, [services, location.pathname]);
+  }, [services, location.pathname, retailerDashboard]);
   useEffect(() => {
     const [, page = "", id] = location.pathname.split("/");
     const params = new URLSearchParams(location.search);
@@ -137,7 +139,10 @@ export function Provider({ services, children }: { services: Services; children:
 
   function notify(text: string, undo?: () => Promise<unknown>) {
     const id = crypto.randomUUID();
-    setNotices((items) => [...items, { id, text, undo }]);
+    setNotices((items) => [
+      ...(undo ? items : items.filter((notice) => notice.undo)),
+      { id, text, undo },
+    ]);
     setTimeout(
       () => setNotices((items) => items.filter((item) => item.id !== id)),
       undo ? 8000 : 3400,

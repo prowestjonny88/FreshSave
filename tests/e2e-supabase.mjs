@@ -85,6 +85,10 @@ try {
   await seller.click('[data-act=mok]')
   await until(seller, 'Clearance Basket details')
 
+  await seller.hash('#/dashboard')
+  await until(seller, 'Needs your action')
+  assert.doesNotMatch(await seller.text('#main'), /request to accept or decline/)
+
   await buyer.hash('#/item/' + published)
   await until(buyer, 'Test Sealed Crackers')
   await buyer.click('[data-act=reserve]')
@@ -92,6 +96,10 @@ try {
   await until(buyer, 'Waiting for the seller')
   const id = (await buyer.eval('return location.hash')).split('/').pop()
   assert.equal((await read(buyerApi, id)).pin, undefined)
+  assert.equal(await seller.eval('return document.visibilityState'), 'visible')
+  await until(seller, '1 request to accept or decline', 38_000)
+  assert.equal(await seller.eval('return location.hash'), '#/dashboard')
+  console.log('PASS the visible retailer Today page updates after a buyer reserves in another browser')
   await seller.hash('#/reservation/' + id)
   await until(seller, 'Waiting for the seller')
   await seller.click('[data-act=raccept]')

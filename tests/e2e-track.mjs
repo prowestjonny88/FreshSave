@@ -10,6 +10,10 @@ ok(c7.d1 <= c7.d3 && c7.d3 <= c7.d7, `expiry filters are cumulative (d1=${c7.d1}
 eq([c7.d1, c7.d3, c7.d7, c7.expired, c7.active], [2, 3, 4, 1, 8], 'counts match the seed (item due tomorrow appears under Use soon within 7 days)')
 const t7 = await b.text('#main'); ok(t7.includes('Dutch Lady Full Cream Milk') && t7.includes('Strawberries') && t7.includes('everything due sooner'), 'Use soon includes items due today/tomorrow and says so')
 ok(!t7.includes('Past its') , 'past-date items are not in "Within 7 days"')
+await b.hash('#/dashboard')
+ok(!(await b.text('#main')).includes('Marigold Natural Yoghurt'), 'Today leaves past-date food out of Use soon')
+await b.hash('#/inventory?st=expired')
+ok(await b.has('.acts-cell > [data-id=i4][data-s=discarded]') && await b.has('.more [data-id=i4][data-s=consumed]'), 'past use-by food offers Discard first and keeps Mark as used in More actions')
 // partial consumption + undo
 await b.hash('#/inventory'); const rowBtn = (id, s) => `[data-act=invdone][data-id=${id}][data-s=${s}]`
 await b.click(rowBtn('i1', 'consumed')); ok((await b.modal()).includes('How many used'), 'multi-unit item asks how many were used')
@@ -47,6 +51,9 @@ await b.act('bcuse'); await b.sleep(300); eq(await b.eval('return location.hash'
 await b.hash('#/inventory'); await b.act('addmanual'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(250)
 ok(await b.eval(`const field = document.querySelector('#man-name'); return document.activeElement === field && field.getAttribute('aria-invalid') === 'true' && document.getElementById(field.getAttribute('aria-describedby'))?.textContent.includes('Enter the product name')`), 'invalid manual entry focuses the field and associates its error')
 await b.type('#man-name', 'Test Biscuits'); await b.type('#man-cat', 'pantry'); await b.type('#man-expiry', '2020-01-01')
+await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200)
+ok((await b.modal()).includes('Choose the date type printed on the pack') && !(await b.has('input[name="man-et"]:checked')), 'new manual entry requires a deliberate date type')
+await b.click('[data-b="man.expiryType"][value="best-before"]')
 ok(!(await b.eval(`return document.querySelector('#man-past').hidden`)), 'past date shows an inline notice'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200); ok((await b.modal()).includes('Tick the box'), 'manual entry requires date confirmation')
 ok(await b.eval(`const m=document.querySelector('#modal'); return m.contains(document.activeElement)`), 'focus is inside the dialog')
 await b.eval(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`); await b.sleep(150); ok(!(await b.modalOpen()), 'Escape closes the dialog')

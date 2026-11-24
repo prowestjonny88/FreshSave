@@ -466,7 +466,11 @@ function ListingTable({ listings, basket }: { listings: Listing[]; basket?: bool
                   }
                 />
                 <td data-l="Units" className="ucell">
-                  <UnitBar ledger={ledger} />
+                  {state === "awaiting" ? (
+                    `${units(ledger.avail)} to set aside`
+                  ) : (
+                    <UnitBar ledger={ledger} />
+                  )}
                 </td>
                 <td data-l="Status">
                   <div className="datecell">
@@ -621,7 +625,11 @@ export function Basket() {
       {params.has("new") && (
         <div className="okbar">
           <div>
-            <b>Listing created</b>
+            <b>
+              {state === "awaiting"
+                ? "Listing created · not visible to buyers yet"
+                : "Listing created"}
+            </b>
           </div>
         </div>
       )}
@@ -661,7 +669,11 @@ export function Basket() {
             </dd>
             <dt>Units</dt>
             <dd>
-              <UnitBar ledger={ledger} />
+              {state === "awaiting" ? (
+                `${units(ledger.avail)} to set aside`
+              ) : (
+                <UnitBar ledger={ledger} />
+              )}
             </dd>
             <dt>Date on pack</dt>
             <dd>
@@ -955,9 +967,7 @@ function ListingEditor({
   async function publish() {
     const result = await run("offerBatch", payload());
     if (result.ok) {
-      notify(
-        existing ? "Listing updated – reservations keep their agreed terms" : "Listing created",
-      );
+      if (existing) notify("Listing updated – reservations keep their agreed terms");
       navigate(existing ? "/listings" : "/basket/" + result.value + "?new=1");
     } else setError(result.error);
     return result;
@@ -1248,14 +1258,10 @@ function ListingEditor({
                   <small>Recorded on arrival</small>
                   <b>{batch.qty}</b>
                 </div>
-                {input("qty", "Units you counted on the shelf", "number")}
-                <div>
-                  <small>Units to offer</small>
-                  <b>{+draft.qty || "–"}</b>
-                </div>
+                {input("qty", "Units to set aside and offer", "number")}
               </div>
               <p className="hint">
-                Count the units you can set aside now. At most {cap} can be offered.
+                Count only the units you want to offer. At most {cap} can be offered.
               </p>
               <h2>Price</h2>
               {pricing}

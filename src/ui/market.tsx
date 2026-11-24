@@ -620,12 +620,13 @@ export function Item() {
         <dl className="deflist tight">
           <dt>Total</dt>
           <dd>{rm(listing.price * count)} · paid in person</dd>
-          <dt>Collect by</dt>
+          <dt>Listing collection cutoff</dt>
           <dd>{formatDeadline(listingCutoff(listing))}</dd>
         </dl>
         <p>
-          The seller has two hours to respond. Once accepted you get a 4-digit pickup code. The
-          price and pickup details are locked for this reservation.
+          Your request holds the selected units. The seller has two hours to respond. If accepted,
+          you’ll get a 4-digit pickup code and your own pickup deadline, which may be earlier than
+          the listing cutoff. The agreed price and pickup details are locked for this reservation.
         </p>
       </Confirm>,
     );
@@ -715,7 +716,7 @@ export function Item() {
             <dd>
               <b>{formatDate(listing.expiry)}</b>
             </dd>
-            <dt>Collect by</dt>
+            <dt>Listing cutoff</dt>
             <dd>
               <b>{formatDeadline(listingCutoff(listing))}</b>
               <br />

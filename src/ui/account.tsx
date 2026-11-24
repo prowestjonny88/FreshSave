@@ -39,7 +39,10 @@ export function Dashboard() {
       ? data.batches.filter((b) => b.verify === "unverified")
       : data.inventory.filter((i) => i.status === "active")
   )
-    .filter((item) => daysUntil(item.expiry, Date.now()) <= 7)
+    .filter((item) => {
+      const days = daysUntil(item.expiry, Date.now());
+      return days <= 7 && (retailer || days >= 0);
+    })
     .sort((a, b) => a.expiry.localeCompare(b.expiry))
     .slice(0, 5);
   const nearby = !retailer ? browse(data, "", 5).slice(0, 3) : [];

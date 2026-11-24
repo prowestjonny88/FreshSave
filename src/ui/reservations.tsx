@@ -465,7 +465,7 @@ export function ReservationList() {
             </div>
           </div>
           <p>
-            Collect by <b>{formatDeadline(next.collectBy)}</b> · {next.terms.sellerName},{" "}
+            Your pickup deadline <b>{formatDeadline(next.collectBy)}</b> · {next.terms.sellerName},{" "}
             {next.terms.sellerArea}
           </p>
           <PickupCode r={next} />
@@ -525,7 +525,7 @@ export function ReservationList() {
                       {r.status === "pending" ? (
                         <b>Respond by {formatDeadline(r.respondBy)}</b>
                       ) : r.status === "confirmed" ? (
-                        <b>Collect by {formatDeadline(r.collectBy)}</b>
+                        <b>Pickup deadline: {formatDeadline(r.collectBy)}</b>
                       ) : (
                         <>
                           <Badge>{status(r)}</Badge>
@@ -594,9 +594,11 @@ export function ReservationDetail() {
   const heading = r.status === "pending" ? "Waiting for the seller" : status(r);
   const description =
     r.status === "pending"
-      ? "Respond by " + formatDeadline(r.respondBy)
+      ? (seller ? "Respond by " : "Seller must respond by ") + formatDeadline(r.respondBy)
       : r.status === "confirmed"
-        ? "Collect by " + formatDeadline(r.collectBy) + ". Pay in person at pickup."
+        ? (seller ? "Pickup deadline: " : "Your pickup deadline: ") +
+          formatDeadline(r.collectBy) +
+          ". Pay in person at pickup."
         : r.status === "completed"
           ? r.disputed
             ? "The buyer reported a problem."
@@ -625,7 +627,11 @@ export function ReservationDetail() {
         }
       >
         <span className="c" aria-hidden="true">
-          ✓
+          {r.status === "pending"
+            ? "…"
+            : r.status === "confirmed" || r.status === "completed"
+              ? "✓"
+              : "–"}
         </span>
         <div>
           <h1>{heading}</h1>
@@ -638,7 +644,11 @@ export function ReservationDetail() {
         </div>
       )}
       {!seller && r.status === "pending" && (
-        <div className="box mute">Your pickup code appears here once the seller accepts.</div>
+        <div className="box mute">
+          Your pickup code and deadline appear here once the seller accepts. Check Reservations or
+          in-app notifications for an update. If the seller doesn’t respond in time, the request
+          expires.
+        </div>
       )}
       {seller && r.status === "confirmed" && mode === "demo" && r.sample && r.pin && (
         <Note danger>Prototype hint for sample buyer: {r.pin}</Note>
@@ -647,7 +657,8 @@ export function ReservationDetail() {
         <div className="box deadline">
           <div>
             <b>
-              {r.status === "pending" ? "Respond by" : "Collect by"} {formatDeadline(time(r))}
+              {r.status === "pending" ? "Seller response due" : "Pickup deadline"}{" "}
+              {formatDeadline(time(r))}
             </b>
             <Disclosure title="How this deadline works" className="flat">
               <p className="mute sm">
