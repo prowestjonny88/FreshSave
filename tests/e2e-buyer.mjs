@@ -8,6 +8,21 @@ ok(!(await b.text('body')).includes('Jaya Grocer'), 'no real chain names visible
 const nav = await b.text('#nav'); ok(/Today[\s\S]*TRACK[\s\S]*My food[\s\S]*RESCUE[\s\S]*Find food[\s\S]*Reservations/i.test(nav), 'nav is grouped Today / Track / Rescue')
 ok(!(await b.has('#cats [data-id=meat]')) && !(await b.has('#cats [data-id=dairy]')), 'category bar only offers pilot categories')
 
+await b.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+await b.eval(`document.querySelector('#q').focus()`)
+await b.sleep(120)
+ok(await b.eval(`return document.querySelector('#sdrop').checkVisibility()`), 'focusing search opens recent searches')
+await b.eval(`document.querySelector('#sdrop .row').focus()`)
+ok(await b.eval(`return document.querySelector('#sdrop').checkVisibility()`), 'keyboard focus inside the search panel keeps it open')
+await b.eval(`document.querySelector('#main h1').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`)
+await b.sleep(120)
+ok(await b.eval(`return !document.querySelector('#sdrop').checkVisibility()`), 'clicking a non-focusable heading dismisses the search panel')
+await b.click('#q')
+ok(await b.eval(`return document.querySelector('#sdrop').checkVisibility()`), 'clicking search again reopens the panel')
+await b.eval(`document.querySelector('#hdr-dist').focus()`)
+await b.sleep(120)
+ok(await b.eval(`return !document.querySelector('#sdrop').checkVisibility()`), 'moving focus outside the search box dismisses the panel')
+
 // search suggestion respects the distance filter
 await b.act('setdist', '[data-v="2"]').catch(() => {})
 await b.type('#hdr-dist', '2')

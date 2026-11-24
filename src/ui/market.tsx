@@ -31,6 +31,8 @@ export function MarketSearch() {
   const [text, setText] = useState(""),
     [open, setOpen] = useState(false);
   const [matches, setMatches] = useState<ViewData>();
+  const searchBox = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const navigate = useNavigate(),
     location = useLocation();
   const query = new URLSearchParams(location.search).get("q") || "";
@@ -38,6 +40,20 @@ export function MarketSearch() {
   useEffect(() => {
     setOpen(false);
   }, [location.pathname, location.search]);
+  useEffect(() => {
+    if (!open) return;
+    function dismissOutside(event: Event) {
+      if (event.target instanceof Node && !searchBox.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside);
+    };
+  }, [open]);
   useEffect(() => {
     if (mode !== "supabase" || !open || !text.trim()) return;
     let active = true;
@@ -65,7 +81,16 @@ export function MarketSearch() {
   return (
     <div className="hdr-search">
       <div className="wrap hs-in">
-        <div className="searchbox" id="searchbox">
+        <div
+          className="searchbox"
+          id="searchbox"
+          ref={searchBox}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !open) return;
+            searchInput.current?.focus();
+            setOpen(false);
+          }}
+        >
           <form
             id="sform"
             role="search"
@@ -76,17 +101,16 @@ export function MarketSearch() {
           >
             <input
               id="q"
+              ref={searchInput}
               aria-label="Search listings"
               autoComplete="off"
               value={text}
               placeholder="Search sealed food near you…"
               onFocus={() => setOpen(true)}
+              onClick={() => setOpen(true)}
               onChange={(event) => {
                 setText(event.target.value);
                 setOpen(true);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setOpen(false);
               }}
             />
             <button className="go" type="submit">
