@@ -38,7 +38,7 @@ ok((await b.toastText()).includes('discarded') || (await b.modalOpen()), 'a menu
 await b.hash('#/inventory?st=d1'); ok((await vis(b, '.tabs .tab.on')) === 1 && (await b.text('.tabs .tab.on')).includes('Use soon'), 'legacy within-1-day links land on Use soon')
 // Scan
 await b.hash('#/scan')
-ok((await b.text('#main')).split('Simulated').length - 1 <= 2 && (await b.text('#main')).includes('Simulated scanning'), 'scan page states once that scanning is simulated')
+ok((await b.text('#main')).includes('On-device OCR'), 'scan page explains OCR needs confirmation')
 ok(!(await vis(b, 'input[name=sample]')), 'demo outcome choices are tucked away')
 await b.click('.demo-opts summary'); ok((await vis(b, 'input[name=sample]')) === 3, 'demo choices open on request')
 await b.eval(`document.querySelector('input[name=sample][value=milk]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
@@ -47,7 +47,7 @@ ok(!(await vis(b, '#res-date')), 'purchase date is collapsed on the confirm page
 await b.eval(`const f=document.querySelector('#f-res'); document.querySelector('[data-b="res.ok"]').click(); f.requestSubmit()`); await b.sleep(400)
 const st = await b.eval(`return JSON.parse(localStorage.getItem('freshsave-app-v2')).inventory[0]`)
 ok(st.purchased === await b.eval(`return new Date().toLocaleDateString('en-CA')`), 'purchase date still defaults to today when collapsed')
-await b.hash('#/notifications'); ok((await b.text('#main')).includes('In-app only'), 'notifications keep the in-app-only notice')
+await b.hash('#/notifications'); ok((await b.text('#main')).includes('7, 3 and 1 day'), 'notifications explain reminder timing')
 await b.hash('#/profile'); ok(!(await vis(b, '#f-pw input')), 'password fields are collapsed') ; ok((await b.text('#main')).includes('plain text'), 'plain-text password warning stays visible')
 await b.close()
 

@@ -5,6 +5,13 @@ import type { Batch, CatalogueItem, FoodInput, InventoryItem, StockUse } from ".
 import { daysUntil, shiftDay, storeDay, type DateType } from "../domain/time.ts";
 import { gtinOk } from "../domain/barcode.ts";
 import {
+  cameraAvailable,
+  grabFrame,
+  openCamera,
+  readExpiry,
+  scanBarcodes,
+} from "../services/vision.ts";
+import {
   Badge,
   Button,
   Categories,
@@ -42,17 +49,18 @@ export interface FoodDraft {
   detection?: "success" | "uncertain" | "failed" | "barcode";
   suggested?: string;
   illustration?: string;
+  ocrText?: string;
 }
 const today = () => storeDay(Date.now());
 
-export async function readPhoto(file: File): Promise<string> {
+export async function readPhoto(file: File, max = 640): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
   const url = URL.createObjectURL(file);
   try {
     const picture = new Image();
     picture.src = url;
     await picture.decode();
-    const scale = Math.min(1, 640 / Math.max(picture.width, picture.height));
+    const scale = Math.min(1, max / Math.max(picture.width, picture.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(picture.width * scale));
     canvas.height = Math.max(1, Math.round(picture.height * scale));
@@ -94,7 +102,8 @@ export function FoodForm({
     [saving, setSaving] = useState(false);
   const formRef = useFormErrorFocus(Object.values(errors).find(Boolean));
   const [detection, setDetection] = useState(draft.detection),
-    [suggested, setSuggested] = useState(draft.suggested);
+    [suggested, setSuggested] = useState(draft.suggested),
+    [ocrBusy, setOcrBusy] = useState(0);
   const change = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => {
     setValues((fields) => ({
       ...fields,
@@ -132,6 +141,14 @@ export function FoodForm({
             ? { cat: "Choose a category." }
             : { expiryType: "Choose the date type printed on the pack." },
       );
+      return;
+    }
+    if (!values.expiry) {
+      setErrors({ expiry: "Enter the date printed on the pack." });
+      return;
+    }
+    if (!values.confirmed) {
+      setErrors({ ok: "Tick the box to confirm you have checked the date against the pack." });
       return;
     }
     setSaving(true);
@@ -265,9 +282,9 @@ export function FoodForm({
       </>
     );
   const resultText = {
-    success: "Simulated reading: a date was found",
-    uncertain: "Simulated reading: the date is unclear",
-    failed: "Simulated reading: no date found",
+    success: "OCR found a date on the label",
+    uncertain: "OCR found a date, but no EXP/BB label – check it",
+    failed: "OCR could not read a date – enter it by hand",
     barcode: "Product identified by barcode",
   };
   return (
@@ -289,6 +306,39 @@ export function FoodForm({
             <b>{detection && resultText[detection]}</b>
             <small>Confirm the date yourself before saving.</small>
           </div>
+          {draft.ocrText && (
+            <Disclosure title="Text read from the label" className="flat">
+              <pre className="ocr-text">{draft.ocrText}</pre>
+            </Disclosure>
+          )}
+          {detection === "barcode" && (
+            <label className="btn sec block">
+              {ocrBusy ? `Reading label… ${ocrBusy}%` : "Scan the date label (photo)"}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                id="res-label"
+                hidden
+                disabled={!!ocrBusy}
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  setOcrBusy(1);
+                  const found = await readExpiry(await readPhoto(file, 1600), (p) =>
+                    setOcrBusy(Math.max(1, p)),
+                  );
+                  setOcrBusy(0);
+                  setDetection(found.detection);
+                  if (found.date) {
+                    setSuggested(found.date);
+                    change("expiry", found.date);
+                  }
+                  if (found.type) change("expiryType", found.type);
+                }}
+              />
+            </label>
+          )}
           {detection === "barcode" && (
             <Button
               className="btn sec block"
@@ -300,7 +350,7 @@ export function FoodForm({
                 setDetection("success");
               }}
             >
-              Simulate scanning the date label
+              Use a demo date label
             </Button>
           )}
         </div>
@@ -319,12 +369,61 @@ export function Scan() {
   const { data, dialog, notify } = useUI(),
     navigate = useNavigate();
   const retailer = data.session?.user.role === "retailer";
-  const [stage, setStage] = useState<"idle" | "camera" | "processing">("idle");
+  const [stage, setStage] = useState<"idle" | "camera" | "live" | "processing">("idle");
   const [scenario, setScenario] = useState("milk"),
-    [uploaded, setUploaded] = useState<string | null>(null);
+    [uploaded, setUploaded] = useState<string | null>(null),
+    [progress, setProgress] = useState(0);
   const captureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(captureTimer.current), []);
+  const video = useRef<HTMLVideoElement>(null),
+    stopCamera = useRef<(() => void) | null>(null);
+  const endCamera = () => {
+    stopCamera.current?.();
+    stopCamera.current = null;
+  };
+  useEffect(
+    () => () => {
+      clearTimeout(captureTimer.current);
+      endCamera();
+    },
+    [],
+  );
   const sample = SCAN_SAMPLES.find((item) => item.id === scenario)!;
+
+  /** Real OCR on a photo: suggest a date, the user must still confirm it. */
+  async function recognise(image: string) {
+    endCamera();
+    setUploaded(image);
+    setStage("processing");
+    setProgress(0);
+    const found = await readExpiry(image, setProgress);
+    const draft: FoodDraft = {
+      qty: 1,
+      detection: found.detection,
+      expiryType: found.type ?? undefined,
+      expiry: found.date,
+      suggested: found.date,
+      photo: image,
+      ocrText: found.raw,
+    };
+    navigate("/scan/result", { state: draft });
+  }
+
+  async function startCamera() {
+    if (!cameraAvailable()) {
+      notify("Camera not available – upload a photo instead");
+      return;
+    }
+    setStage("live");
+    try {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      stopCamera.current = await openCamera(video.current!);
+    } catch {
+      setStage("idle");
+      notify("Couldn’t open the camera. Allow access or upload a photo.");
+    }
+  }
+
+  /** Demo sample (kept for offline presentations and automated tests). */
   function capture(image = uploaded) {
     setStage("processing");
     clearTimeout(captureTimer.current);
@@ -357,10 +456,9 @@ export function Scan() {
           const file = event.target.files?.[0];
           if (!file) return;
           try {
-            const image = await readPhoto(file);
-            setUploaded(image);
-            capture(image);
+            await recognise(await readPhoto(file, 1600));
           } catch {
+            setStage("idle");
             notify("Could not read that image");
           }
         }}
@@ -388,27 +486,57 @@ export function Scan() {
           </>
         }
       />
-      <Note danger>
-        <b>Simulated scanning.</b> No camera is opened and nothing is read from your photo. Confirm
-        the date before saving.
+      <Note>
+        <b>On-device OCR.</b> FreshSave reads the printed date from your photo and suggests it. You
+        must confirm the date and its type before saving.
       </Note>
       <div className="scan simple">
         <div className={"cam " + stage}>
           {stage === "idle" ? (
             <div className="cam-off">
-              <h3>Photograph the product and its date</h3>
+              <h3>Photograph the printed date</h3>
               <div className="acts">
-                <Button act="camon" onClick={() => setStage("camera")}>
-                  Start simulated scan
+                <Button act="realcam" onClick={startCamera}>
+                  Open camera
                 </Button>
                 {uploader}
               </div>
             </div>
+          ) : stage === "live" ? (
+            <>
+              <div className="viewfinder">
+                <video ref={video} muted playsInline className="vf-video" />
+                <div className="vf-frame" aria-hidden="true" />
+              </div>
+              <div className="cam-ctl">
+                <Button
+                  act="camoff"
+                  className="btn sec"
+                  onClick={() => {
+                    endCamera();
+                    setStage("idle");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  act="snap"
+                  className="shutter"
+                  aria-label="Capture and read date"
+                  onClick={() => video.current && recognise(grabFrame(video.current))}
+                />
+                {uploader}
+              </div>
+            </>
           ) : (
             <>
               <div className="viewfinder">
                 <Picture alt="Camera preview" src={uploaded || photo(sample.kind)} />
-                {stage === "processing" && <div className="vf-busy">Reading demo label…</div>}
+                {stage === "processing" && (
+                  <div className="vf-busy">
+                    {uploaded ? `Reading the label… ${progress}%` : "Reading demo label…"}
+                  </div>
+                )}
               </div>
               <div className="cam-ctl">
                 <Button
@@ -426,16 +554,15 @@ export function Scan() {
                   disabled={stage === "processing"}
                   onClick={() => capture()}
                 />
-                {uploader}
               </div>
             </>
           )}
         </div>
         <div className="tipsline">
-          <span>Show the product name and printed date</span>
-          <span>Keep the label in focus</span>
+          <span>Fill the frame with the EXP / BB date</span>
+          <span>Good light, label in focus</span>
         </div>
-        <Disclosure title="Demo option · choose a result" className="demo-opts">
+        <Disclosure title="Demo option · sample packs (no camera)" className="demo-opts">
           {SCAN_SAMPLES.map((item) => (
             <label className="rad" key={item.id}>
               <input
@@ -448,6 +575,16 @@ export function Scan() {
               {item.label}
             </label>
           ))}
+          <Button
+            act="camon"
+            className="btn sec"
+            onClick={() => {
+              setUploaded(null);
+              setStage("camera");
+            }}
+          >
+            Start demo scan
+          </Button>
         </Disclosure>
       </div>
     </>
@@ -459,7 +596,38 @@ export function Barcode() {
     navigate = useNavigate();
   const [code, setCode] = useState(""),
     [outcome, setOutcome] = useState<CatalogueItem | null>(),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [scanning, setScanning] = useState(false);
+  const video = useRef<HTMLVideoElement>(null),
+    stopScan = useRef<(() => void) | null>(null);
+  const endScan = () => {
+    stopScan.current?.();
+    stopScan.current = null;
+    setScanning(false);
+  };
+  useEffect(() => () => stopScan.current?.(), []);
+  async function startScan() {
+    if (!cameraAvailable()) {
+      notify("Camera not available – type the number instead");
+      return;
+    }
+    setScanning(true);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    try {
+      let done = false;
+      stopScan.current = await scanBarcodes(video.current!, (value) => {
+        const digits = value.replace(/\D/g, "");
+        if (done || !gtinOk(digits)) return;
+        done = true;
+        navigator.vibrate?.(80);
+        endScan();
+        void lookup(digits);
+      });
+    } catch {
+      setScanning(false);
+      notify("Couldn’t open the camera. Allow access or type the number.");
+    }
+  }
   async function lookup(input: string) {
     const barcode = input.replace(/\D/g, "");
     setCode(barcode);
@@ -508,7 +676,19 @@ export function Barcode() {
           }}
         >
           <div className="bc-scan">
-            <span>Barcode camera (simulated)</span>
+            {scanning ? (
+              <>
+                <video ref={video} muted playsInline className="vf-video" />
+                <div className="bc-line" aria-hidden="true" />
+                <Button act="bcstop" className="btn sec sm bc-stop" onClick={endScan}>
+                  Stop camera
+                </Button>
+              </>
+            ) : (
+              <Button act="bccam" className="btn sec" onClick={startScan}>
+                Scan barcode with camera
+              </Button>
+            )}
           </div>
           <Field id="bc-code" label="Barcode number">
             <div className="inline">

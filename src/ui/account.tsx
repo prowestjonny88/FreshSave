@@ -21,6 +21,36 @@ import {
   rm,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
+import { alertsEnabled, alertsSupported, enableAlerts } from "../services/reminders.ts";
+
+function DeviceAlerts() {
+  const { notify } = useUI();
+  const [on, setOn] = useState(alertsEnabled());
+  if (!alertsSupported()) return null;
+  return (
+    <label className="toggle">
+      <span>
+        <b>Device alerts</b>
+        <small className="mute"> Show 7/3/1-day reminders as system notifications</small>
+      </span>
+      <input
+        type="checkbox"
+        data-pref="device"
+        checked={on}
+        onChange={async (event) => {
+          if (!event.target.checked) {
+            notify("Turn off notifications in your browser’s site settings");
+            return;
+          }
+          const granted = await enableAlerts();
+          setOn(granted);
+          notify(granted ? "Device alerts on" : "Notifications are blocked in this browser");
+        }}
+      />
+      <i />
+    </label>
+  );
+}
 
 export function Dashboard() {
   const { data, run } = useUI(),
@@ -260,8 +290,8 @@ export function Notifications() {
         }
       />
       <p className="hintline">
-        <b>In-app only.</b> Date reminders appear here when they’re due. FreshSave sends no push,
-        SMS or email reminders.
+        <b>Date reminders</b> appear here at 7, 3 and 1 day before the date. Turn on device alerts
+        in <Link to="/profile">Profile</Link> to also get system notifications.
       </p>
       <div className="tabs">
         {[
@@ -556,10 +586,11 @@ export function ProfilePage() {
         </form>
         <div>
           <section className="form">
-            <h2>In-app notifications</h2>
+            <h2>Notifications</h2>
             <p className="mute sm">
-              No push, SMS or email is sent. These preferences control what appears in FreshSave.
+              Reminders appear in FreshSave. Device alerts use your browser’s notifications.
             </p>
+            <DeviceAlerts />
             {preferenceLabels
               .filter(([key]) => key !== "stock" || retailer)
               .map(([key, text]) => (
@@ -731,16 +762,20 @@ export function About() {
               ],
               [
                 "Food scanning",
-                "Simulated",
-                "You confirm the date and type against the pack before saving.",
+                "On-device OCR",
+                "Reads the printed date from a photo (Tesseract OCR). You confirm the date and type before saving.",
               ],
               [
                 "Barcode lookup",
-                "Catalogue",
-                "A sample catalogue plus products registered through FreshSave.",
+                "Camera + catalogue",
+                "Scan with the camera or type the number. Sample catalogue plus products registered through FreshSave.",
               ],
               ["Distances", "Approximate", "Estimated between sample neighbourhoods."],
-              ["Reminders", "In-app only", "FreshSave displays reminders and reservation status."],
+              [
+                "Reminders",
+                "In-app + device",
+                "7/3/1-day reminders in FreshSave, optionally as browser notifications.",
+              ],
               [
                 "Pickup",
                 "Code-checked",

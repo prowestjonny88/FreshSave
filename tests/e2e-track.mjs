@@ -30,7 +30,7 @@ st = await b.state(); eq(st.inventory.find((i) => i.id === 'i2').status, 'consum
 ok(!(await b.has('#modal h3') && (await b.modalOpen())), 'no dialog for a single unit')
 
 // scan: uncertain read must not pre-fill the date
-await b.hash('#/scan'); ok((await b.text('#main')).includes('Simulated scanning'), 'scan page says OCR is simulated up front')
+await b.hash('#/scan'); ok((await b.text('#main')).includes('On-device OCR'), 'scan page explains OCR up front')
 await b.eval(`document.querySelector('input[name=sample][value=bread]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
 eq(await b.eval('return location.hash'), '#/scan/result', 'reached confirm page')
 eq(await b.eval(`return document.querySelector('#res-expiry').value`), '', 'unclear reading leaves the date blank')
@@ -41,7 +41,7 @@ await b.eval(`document.querySelector('[data-b="res.expiryType"][value="use-by"]'
 st = await b.state(); const scanNow = await b.eval('return Date.now()'); const sc = st.inventory.find((i) => i.name.includes('Gardenia') && i.addedAt > scanNow - 15000); ok(sc && sc.expiryType === 'use-by' && sc.initial === 1, 'scan result saved with chosen date type')
 // failed read
 await b.hash('#/scan'); await b.eval(`document.querySelector('input[name=sample][value=milo]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
-ok((await b.text('#main')).includes('no date found'), 'failed read explained'); 
+ok((await b.text('#main')).includes('could not read a date'), 'failed read explained');
 // barcode
 await b.hash('#/barcode'); await b.type('#bc-code', '9556041610016'); await b.eval(`document.querySelector('#f-bc').requestSubmit()`); await b.sleep(250)
 ok((await b.toastText()).includes('check digit') && !(await b.has('.bc-res')), 'barcode with a wrong check digit is rejected')
@@ -58,8 +58,8 @@ ok(!(await b.eval(`return document.querySelector('#man-past').hidden`)), 'past d
 ok(await b.eval(`const m=document.querySelector('#modal'); return m.contains(document.activeElement)`), 'focus is inside the dialog')
 await b.eval(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`); await b.sleep(150); ok(!(await b.modalOpen()), 'Escape closes the dialog')
 // reminders wording
-await b.hash('#/notifications'); const nt = await b.text('#main'); ok(nt.includes('In-app only') && nt.includes('no push') || nt.includes('Nothing is sent by push'), 'notifications page says reminders are in-app only')
-await b.hash('#/profile'); ok((await b.text('#main')).includes('No push, SMS or email is sent') && (await b.text('#main')).includes('plain text'), 'settings state in-app scope and plain-text password')
+await b.hash('#/notifications'); const nt = await b.text('#main'); ok(nt.includes('7, 3 and 1 day'), 'notifications page explains 7/3/1-day reminders')
+await b.hash('#/profile'); ok((await b.text('#main')).includes('Device alerts use your browser') && (await b.text('#main')).includes('plain text'), 'settings explain device alerts and plain-text password')
 
 // timers: stale requests and pickups expire and release units
 await b.hash('#/item/l4'); await b.act('reserve'); await b.act('mok'); await b.sleep(300)

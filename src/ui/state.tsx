@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 import type { Commands, Result, Services, ViewData } from "../services/contracts.ts";
+import { pushReminders } from "../services/reminders.ts";
 
 interface Settings {
   distance: number | "all";
@@ -74,6 +75,7 @@ export function Provider({ services, children }: { services: Services; children:
         if (active) {
           setView({ key, data });
           setError("");
+          pushReminders(data.notifs);
         }
       })
       .catch((cause) => {
