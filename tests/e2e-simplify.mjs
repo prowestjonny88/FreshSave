@@ -46,7 +46,7 @@ ok(!(await vis(b, '#res-date')), 'purchase date is collapsed on the confirm page
 await b.eval(`const f=document.querySelector('#f-res'); document.querySelector('[data-b="res.ok"]').click(); f.requestSubmit()`); await b.sleep(400)
 const st = await b.eval(`return JSON.parse(localStorage.getItem('freshsave-app-v2')).inventory[0]`)
 ok(st.purchased === await b.eval(`return new Date().toLocaleDateString('en-CA')`), 'purchase date still defaults to today when collapsed')
-await b.hash('#/notifications'); ok((await b.text('#main')).includes('In-app only'), 'notifications keep the in-app-only notice')
+await b.hash('#/notifications'); ok((await b.text('#main')).includes('while FreshSave is open'), 'notifications explain when optional device alerts work')
 await b.hash('#/profile'); ok(!(await vis(b, '#f-pw input')), 'password fields are collapsed') ; ok((await b.text('#main')).includes('plain text'), 'plain-text password warning stays visible')
 await b.close()
 

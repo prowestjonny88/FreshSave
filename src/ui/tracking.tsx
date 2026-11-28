@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
-import { SCAN_SAMPLES, photo } from "../data.js";
+import { SCAN_SAMPLES } from "../data.js";
 import type { Batch, CatalogueItem, FoodInput, InventoryItem, StockUse } from "../domain/model.ts";
 import { daysUntil, shiftDay, storeDay, type DateType } from "../domain/time.ts";
 import { gtinOk } from "../domain/barcode.ts";
@@ -26,6 +26,8 @@ import {
   useFormErrorFocus,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
+import { cameraAvailable, readExpiry } from "../services/vision.ts";
+import { Camera } from "./camera.tsx";
 
 export interface FoodDraft {
   id?: string;
@@ -42,18 +44,71 @@ export interface FoodDraft {
   reservationId?: string;
   detection?: "success" | "uncertain" | "failed" | "barcode";
   suggested?: string;
-  illustration?: string;
+  scanSource?: "label";
 }
 const today = () => storeDay(Date.now());
 
-export async function readPhoto(file: File): Promise<string> {
+function PhotoPicker({
+  id,
+  label,
+  disabled,
+  busyLabel,
+  filename,
+  onPick,
+}: {
+  id: string;
+  label: string;
+  disabled: boolean;
+  busyLabel: string;
+  filename: string | null;
+  onPick: (file: File) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const busy = filename !== null;
+  return (
+    <div className="photo-control">
+      <Button
+        className="btn sec photo-picker"
+        aria-disabled={disabled || undefined}
+        onClick={() => {
+          if (!disabled) input.current?.click();
+        }}
+      >
+        <svg className="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 16V4m-5 5 5-5 5 5M5 15v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" />
+        </svg>
+        {busy ? busyLabel : label}
+      </Button>
+      <input
+        ref={input}
+        id={id}
+        type="file"
+        accept="image/*"
+        aria-label={label}
+        hidden
+        disabled={disabled}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file && !disabled) onPick(file);
+        }}
+      />
+      <small className="photo-filename" role="status">
+        {busy && <span className="sr-only">{busyLabel} </span>}
+        {filename}
+      </small>
+    </div>
+  );
+}
+
+export async function readPhoto(file: File, maxSize = 640): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
   const url = URL.createObjectURL(file);
   try {
     const picture = new Image();
     picture.src = url;
     await picture.decode();
-    const scale = Math.min(1, 640 / Math.max(picture.width, picture.height));
+    const scale = Math.min(1, maxSize / Math.max(picture.width, picture.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(picture.width * scale));
     canvas.height = Math.max(1, Math.round(picture.height * scale));
@@ -77,11 +132,14 @@ export function FoodForm({
   popup?: boolean;
   afterSave?: (id: string) => void;
 }) {
-  const { data, run, close, lockDialog, notify } = useUI(),
+  const { data, mode, run, close, lockDialog, notify } = useUI(),
     navigate = useNavigate();
   const location = useLocation();
   const [picture, setPicture] = useState(draft.photo);
-  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [labelRead, setLabelRead] = useState(draft.scanSource === "label");
+  const [readingFilename, setReadingFilename] = useState<string | null>(null);
+  const photoBusy = readingFilename !== null;
   const prefix = popup ? "man" : "res",
     retailer = data.session?.user.role === "retailer";
   const [values, setValues] = useState({
@@ -98,6 +156,42 @@ export function FoodForm({
   const formRef = useFormErrorFocus(Object.values(errors).find(Boolean));
   const [detection, setDetection] = useState(draft.detection),
     [suggested, setSuggested] = useState(draft.suggested);
+  const rereadLabel = draft.detection === "barcode" || draft.scanSource === "label";
+  async function reviewPhoto(file: File) {
+    setPhotoError("");
+    setReadingFilename(file.name);
+    if (rereadLabel) {
+      setLabelRead(true);
+      setDetection(undefined);
+      setSuggested("");
+      setPicture(null);
+      setValues((fields) => ({ ...fields, expiry: "", expiryType: "", confirmed: false }));
+      setErrors((fields) => ({ ...fields, expiry: "", expiryType: "", ok: "" }));
+    }
+    try {
+      const image = await readPhoto(file, rereadLabel ? 1600 : 640);
+      setPicture(image);
+      if (!rereadLabel) return;
+      const result = await readExpiry(image);
+      setDetection(result.detection);
+      setSuggested(result.date);
+      if (result.detection === "success") {
+        setValues((fields) =>
+          fields.expiry || fields.expiryType
+            ? fields
+            : { ...fields, expiry: result.date, expiryType: result.type ?? "", confirmed: false },
+        );
+      }
+    } catch {
+      setPhotoError(
+        rereadLabel
+          ? "Could not read the date label. Try another photo or enter the date by hand."
+          : "Could not open that image. Try another photo.",
+      );
+    } finally {
+      setReadingFilename(null);
+    }
+  }
   const change = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => {
     setValues((fields) => ({
       ...fields,
@@ -224,6 +318,7 @@ export function FoodForm({
         </p>
         <Check
           binding={prefix + ".ok"}
+          disabled={rereadLabel && photoBusy}
           aria-invalid={!!errors.ok || undefined}
           aria-describedby={errors.ok ? prefix + "-confirmation-error" : undefined}
           checked={values.confirmed}
@@ -276,11 +371,17 @@ export function FoodForm({
       </>
     );
   const resultText = {
-    success: "Simulated reading: a date was found",
-    uncertain: "Simulated reading: the date is unclear",
-    failed: "Simulated reading: no date found",
+    success: labelRead ? "Date read from photo" : "Simulated reading: a date was found",
+    uncertain: labelRead
+      ? "Date unclear. Check the pack."
+      : "Simulated reading: the date is unclear",
+    failed: labelRead
+      ? "No complete date found. Enter it from the pack."
+      : "Simulated reading: no date found",
     barcode: "Product identified by barcode",
   };
+  const labelNeedsRetry =
+    Boolean(photoError) || (labelRead && (detection === "failed" || detection === "uncertain"));
   return (
     <>
       <div className="crumbs">
@@ -292,54 +393,67 @@ export function FoodForm({
         group="Track"
       />
       <div className="result">
-        <div className="box">
-          <div className="res-img">
-            <Picture
-              alt={picture ? "Attached product photo" : "Sample product"}
-              src={picture || draft.illustration}
-            />
-          </div>
-          <div className="detect">
-            <b>{detection && resultText[detection]}</b>
-            <small>Confirm the date yourself before saving.</small>
-          </div>
-          {detection !== "barcode" && (
-            <Field id="scan-file" label="Attach a photo (optional)">
-              <input
-                type="file"
-                id="scan-file"
-                accept="image/*"
-                disabled={photoBusy}
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  setPhotoBusy(true);
-                  try {
-                    setPicture(await readPhoto(file));
-                  } catch {
-                    notify("Could not read that image");
-                  } finally {
-                    setPhotoBusy(false);
-                  }
-                }}
-              />
-            </Field>
-          )}
-          {detection === "barcode" && (
-            <Button
-              className="btn sec block"
-              act="scanlabel"
-              onClick={() => {
-                const date = shiftDay(today(), 5);
-                setSuggested(date);
-                change("expiry", date);
-                setDetection("success");
-              }}
+        <aside className="box scan-review" aria-label="Scan result">
+          {detection && (
+            <div
+              className={
+                "scan-message " +
+                (detection === "failed" || detection === "uncertain" ? "scan-message-warn" : "")
+              }
+              role="status"
             >
-              Simulate scanning the date label
-            </Button>
+              <strong>{detection && resultText[detection]}</strong>
+            </div>
           )}
-        </div>
+          {picture && (
+            <div className="res-img">
+              <Picture
+                alt={rereadLabel ? "Photo of the printed date" : "Attached product photo"}
+                src={picture}
+              />
+            </div>
+          )}
+          <div className="row-acts scan-actions">
+            <PhotoPicker
+              id={draft.detection === "barcode" ? "barcode-label" : "scan-file"}
+              label={
+                labelNeedsRetry
+                  ? "Try another photo"
+                  : picture
+                    ? rereadLabel
+                      ? "Replace label photo"
+                      : "Replace photo"
+                    : rereadLabel
+                      ? "Read date from photo"
+                      : "Attach a photo"
+              }
+              disabled={photoBusy || saving}
+              busyLabel={rereadLabel ? "Reading label…" : "Opening photo…"}
+              filename={readingFilename}
+              onPick={reviewPhoto}
+            />
+            {detection === "barcode" && mode === "demo" && (
+              <Button
+                className="btn sec"
+                act="scanlabel"
+                disabled={photoBusy}
+                onClick={() => {
+                  const date = shiftDay(today(), 5);
+                  setSuggested(date);
+                  change("expiry", date);
+                  setDetection("success");
+                }}
+              >
+                Use a sample date
+              </Button>
+            )}
+          </div>
+          {photoError && (
+            <p className="formerr" role="alert">
+              {photoError}
+            </p>
+          )}
+        </aside>
         {form}
       </div>
     </>
@@ -355,7 +469,62 @@ export function Scan() {
   const { data, dialog } = useUI();
   const navigate = useNavigate();
   const retailer = data.session?.user.role === "retailer";
+  const [camera, setCamera] = useState(false);
+  const [readingFilename, setReadingFilename] = useState<string | null>(null);
+  const reading = readingFilename !== null;
+  const [error, setError] = useState("");
+  const readVersion = useRef(0);
+  useEffect(
+    () => () => {
+      readVersion.current += 1;
+    },
+    [],
+  );
+  function abandonReading() {
+    readVersion.current += 1;
+    setReadingFilename(null);
+    setError("");
+  }
+  function closeCamera() {
+    setCamera(false);
+    requestAnimationFrame(() => document.getElementById("date-camera-trigger")?.focus());
+  }
+  async function readLabel(image: string | File) {
+    if (reading) return;
+    const version = ++readVersion.current;
+    setReadingFilename(typeof image === "string" ? "" : image.name);
+    setCamera(false);
+    if (typeof image === "string")
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLButtonElement>(".label-scan .photo-picker")?.focus(),
+      );
+    setError("");
+    try {
+      const photo = typeof image === "string" ? image : await readPhoto(image, 1600);
+      if (version !== readVersion.current) return;
+      const result = await readExpiry(photo);
+      if (version !== readVersion.current) return;
+      navigate("/scan/result", {
+        state: {
+          scanSource: "label",
+          detection: result.detection,
+          expiryType: result.type ?? undefined,
+          expiry: result.detection === "success" ? result.date : "",
+          suggested: result.date,
+          photo,
+        } satisfies FoodDraft,
+      });
+    } catch {
+      if (version === readVersion.current)
+        setError("Could not read the label photo. Try another photo or enter the date by hand.");
+    } finally {
+      if (version === readVersion.current) {
+        setReadingFilename(null);
+      }
+    }
+  }
   function trySample(sample: (typeof SCAN_SAMPLES)[number]) {
+    abandonReading();
     const suggested = sample.exp === null ? "" : shiftDay(today(), sample.exp);
     const draft: FoodDraft = {
       name: sample.name,
@@ -366,7 +535,6 @@ export function Scan() {
       expiryType: sample.et as DateType,
       expiry: sample.result === "success" ? suggested : "",
       suggested,
-      illustration: photo(sample.kind),
     };
     navigate("/scan/result", { state: draft });
   }
@@ -381,12 +549,52 @@ export function Scan() {
             <Link className="btn sec" to="/barcode">
               Barcode
             </Link>
-            <Button act="addmanual" className="btn sec" onClick={() => dialog(<FoodForm popup />)}>
+            <Button
+              act="addmanual"
+              className="btn sec"
+              onClick={() => {
+                abandonReading();
+                setCamera(false);
+                dialog(<FoodForm popup />);
+              }}
+            >
               Enter by hand
             </Button>
           </>
         }
       />
+      <section className="box label-scan" aria-labelledby="label-scan-title">
+        <h2 id="label-scan-title">Read the date on a pack</h2>
+        <p>Use a photo that shows the printed date and its label.</p>
+        {camera && <Camera kind="photo" onRead={readLabel} close={closeCamera} />}
+        <div className="row-acts scan-actions">
+          {!camera && cameraAvailable() && (
+            <Button
+              id="date-camera-trigger"
+              className="btn sec"
+              onClick={() => {
+                abandonReading();
+                setCamera(true);
+              }}
+            >
+              Open camera
+            </Button>
+          )}
+          <PhotoPicker
+            id="label-photo"
+            label={error ? "Try another photo" : "Upload label photo"}
+            disabled={reading}
+            busyLabel="Reading label…"
+            filename={readingFilename}
+            onPick={readLabel}
+          />
+        </div>
+        {error && (
+          <p className="formerr" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
       <section className="box sample-scan" aria-labelledby="sample-scan-title">
         <h2 id="sample-scan-title">Try a sample scan</h2>
         <p>Simulated scanning. Choose a sample, then check its date before saving.</p>
@@ -420,23 +628,53 @@ export function Barcode() {
     [error, setError] = useState(""),
     [fieldError, setFieldError] = useState("");
   const barcodeField = useRef<HTMLInputElement>(null);
-  async function lookup(input: string) {
+  const [camera, setCamera] = useState(false);
+  const cameraActive = useRef(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [savingProduct, setSavingProduct] = useState(false);
+  const latestLookup = useRef(0);
+  const lookupResult = useRef<HTMLDivElement>(null);
+  const shouldFocusResult = useRef(false);
+  useLayoutEffect(() => {
+    if (lookingUp || !shouldFocusResult.current) return;
+    shouldFocusResult.current = false;
+    (
+      lookupResult.current?.querySelector<HTMLElement>("#bcnew-name") ??
+      lookupResult.current?.querySelector<HTMLElement>("h3, [role=alert]") ??
+      barcodeField.current
+    )?.focus();
+  }, [lookingUp, outcome, error]);
+  function stopCamera() {
+    cameraActive.current = false;
+    setCamera(false);
+  }
+  async function lookup(input: string, fromCamera = false) {
+    if (savingProduct || (fromCamera && !cameraActive.current)) return;
+    stopCamera();
+    shouldFocusResult.current = fromCamera;
+    const request = ++latestLookup.current;
     const barcode = input.replace(/\D/g, "");
     setCode(barcode);
     setOutcome(undefined);
     setError("");
     setFieldError("");
+    setLookingUp(false);
     if (![8, 12, 13, 14].includes(barcode.length)) {
       setFieldError("Enter 8, 12, 13 or 14 digits.");
+      shouldFocusResult.current = false;
       barcodeField.current?.focus();
       return;
     }
     if (!gtinOk(barcode)) {
       setFieldError("That barcode’s check digit doesn’t match.");
+      shouldFocusResult.current = false;
       barcodeField.current?.focus();
       return;
     }
+    setLookingUp(true);
     const result = await run("findBarcode", { barcode });
+    if (request !== latestLookup.current) return;
+    setLookingUp(false);
     if (result.ok) setOutcome(result.value);
     else setError(result.error.message);
   }
@@ -447,21 +685,25 @@ export function Barcode() {
       kind: item.kind,
       barcode: code,
       detection: "barcode",
-      illustration: photo(item.kind),
     };
     navigate("/scan/result", { state: draft });
   }
   return (
     <>
       <div className="crumbs">
-        <Link to="/scan">Scan food</Link> › Barcode lookup
+        <Link to="/scan">Add food or stock</Link> › Barcode lookup
       </div>
       <Heading
         title="Barcode lookup"
-        sub="Identify the product, then enter the date printed on its pack."
+        sub="Scan or enter the barcode to find the product. You’ll check the date next."
         group="Track"
       />
-      <div className="bc">
+      <div
+        className={
+          "bc barcode-workspace" +
+          (outcome !== undefined || error || lookingUp ? " has-result" : "")
+        }
+      >
         <form
           id="f-bc"
           className="box"
@@ -470,8 +712,33 @@ export function Barcode() {
             void lookup(code);
           }}
         >
+          {camera && (
+            <Camera
+              kind="barcode"
+              close={() => {
+                stopCamera();
+                requestAnimationFrame(() =>
+                  document.getElementById("barcode-camera-trigger")?.focus(),
+                );
+              }}
+              onRead={(value) => void lookup(value, true)}
+            />
+          )}
+          {!camera && cameraAvailable() && (
+            <Button
+              id="barcode-camera-trigger"
+              className="btn sec camera-launch"
+              disabled={savingProduct}
+              onClick={() => {
+                cameraActive.current = true;
+                setCamera(true);
+              }}
+            >
+              Scan barcode with camera
+            </Button>
+          )}
           <Field id="bc-code" label="Barcode number" error={fieldError}>
-            <div className="inline">
+            <div className="barcode-entry">
               <input
                 id="bc-code"
                 ref={barcodeField}
@@ -480,45 +747,76 @@ export function Barcode() {
                 inputMode="numeric"
                 maxLength={14}
                 value={code}
-                onChange={(event) => setCode(event.target.value)}
+                disabled={savingProduct}
+                onChange={(event) => {
+                  latestLookup.current += 1;
+                  shouldFocusResult.current = false;
+                  setCode(event.target.value);
+                  setOutcome(undefined);
+                  setError("");
+                  setFieldError("");
+                  setLookingUp(false);
+                }}
               />
-              <Button type="submit">Look up</Button>
+              <Button type="submit" disabled={lookingUp || savingProduct}>
+                Look up
+              </Button>
             </div>
           </Field>
-          <div className="pills">
-            {[
-              ["9556041610018", "Dutch Lady Milk"],
-              ["9556001062048", "Milo"],
-              ["9556570310120", "Gardenia Bread"],
-              ["9551234567896", "Unregistered item"],
-            ].map(([value, label]) => (
-              <Button
-                className="pill"
-                act="bcsample"
-                data-c={value}
-                key={value}
-                onClick={() => lookup(value)}
-              >
-                {label}
-              </Button>
-            ))}
+          <div className="barcode-examples">
+            <p className="mute sm">Try a sample barcode</p>
+            <div className="pills">
+              {[
+                ["9556041610018", "Dutch Lady Milk"],
+                ["9556001062048", "Milo"],
+                ["9556570310120", "Gardenia Bread"],
+                ["9551234567896", "Unregistered item"],
+              ].map(([value, label]) => (
+                <Button
+                  className="pill"
+                  act="bcsample"
+                  data-c={value}
+                  key={value}
+                  disabled={savingProduct}
+                  onClick={() => lookup(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
           <Disclosure title="About this catalogue" className="flat">
             <p>Sample products plus your registered items. The barcode check digit is validated.</p>
           </Disclosure>
         </form>
-        <div>
+        <div
+          className="barcode-result"
+          ref={lookupResult}
+          hidden={outcome === undefined && !error && !lookingUp}
+        >
+          {lookingUp && (
+            <div className="box scan-message" role="status">
+              Looking up barcode…
+            </div>
+          )}
           {outcome ? (
             <div className="box bc-res">
               <Badge tone="g">
                 {outcome.src === "catalogue" ? "In sample catalogue" : "Registered product"}
               </Badge>
-              <h3>{outcome.name}</h3>
+              <h3 tabIndex={-1}>{outcome.name}</h3>
               <div className="row-acts">
                 <Button act="bcuse" onClick={() => use(outcome)}>
                   Use this product
                 </Button>
-                <Button act="bcwrong" className="btn sec" onClick={() => setOutcome(null)}>
+                <Button
+                  act="bcwrong"
+                  className="btn sec"
+                  onClick={() => {
+                    shouldFocusResult.current = true;
+                    setOutcome(null);
+                  }}
+                >
                   Not this product
                 </Button>
               </div>
@@ -529,32 +827,39 @@ export function Barcode() {
               id="f-bcnew"
               onSubmit={async (event) => {
                 event.preventDefault();
+                if (savingProduct) return;
                 const form = new FormData(event.currentTarget);
+                setSavingProduct(true);
+                setError("");
                 const result = await run("saveBarcode", {
                   barcode: code,
                   name: String(form.get("name") || ""),
                   cat: String(form.get("cat") || ""),
                 });
+                setSavingProduct(false);
                 if (result.ok) use(result.value);
                 else setError(result.error.message);
               }}
             >
               <Badge tone="y">Not in the catalogue</Badge>
+              <h3>Add this product</h3>
               <Field label="Product name" id="bcnew-name">
-                <input id="bcnew-name" name="name" />
+                <input id="bcnew-name" name="name" disabled={savingProduct} />
               </Field>
               <Field label="Category" id="bcnew-cat">
-                <select name="cat" id="bcnew-cat">
+                <select name="cat" id="bcnew-cat" disabled={savingProduct}>
                   <Categories />
                 </select>
               </Field>
-              <Button type="submit">Save product & continue</Button>
+              <div className="row-acts">
+                <Button type="submit" disabled={savingProduct}>
+                  {savingProduct ? "Saving…" : "Save product & continue"}
+                </Button>
+              </div>
             </form>
-          ) : (
-            <div className="box mute">Enter a barcode number to look it up.</div>
-          )}
+          ) : null}
           {error && (
-            <p role="alert" className="hot">
+            <p role="alert" className="formerr" tabIndex={-1}>
               {error}
             </p>
           )}
@@ -787,18 +1092,20 @@ export function Inventory() {
             />
           </div>
           <Disclosure title="Filter & sort" className="flat">
-            <div className="inline">
+            <label>
+              Category
               <select
                 className="sel"
-                aria-label="Category"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               >
-                <Categories />
+                <Categories placeholder="All categories" />
               </select>
+            </label>
+            <label>
+              Sort by
               <select
                 className="sel"
-                aria-label="Sort"
                 value={sort}
                 onChange={(event) => setSort(event.target.value)}
               >
@@ -807,7 +1114,7 @@ export function Inventory() {
                 <option value="name">Name A–Z</option>
                 <option value="qty">Quantity</option>
               </select>
-            </div>
+            </label>
           </Disclosure>
         </div>
       )}
@@ -899,6 +1206,7 @@ export function Inventory() {
                             {item.expiryType === "use-by" &&
                             daysUntil(item.expiry, Date.now()) < 0 ? (
                               <Button
+                                className="menu-item"
                                 act="invdone"
                                 data-id={item.id}
                                 data-s="consumed"
@@ -908,6 +1216,7 @@ export function Inventory() {
                               </Button>
                             ) : (
                               <Button
+                                className="menu-item"
                                 act="invdone"
                                 data-id={item.id}
                                 data-s="discarded"
@@ -917,6 +1226,7 @@ export function Inventory() {
                               </Button>
                             )}
                             <Button
+                              className="menu-item"
                               act="invedit"
                               onClick={() => dialog(<FoodForm popup draft={draftFor(item)} />)}
                             >
@@ -924,6 +1234,7 @@ export function Inventory() {
                             </Button>
                             {!!item.log.length && (
                               <Button
+                                className="menu-item"
                                 act="invundo"
                                 onClick={() => run("undoFood", { id: item.id })}
                               >
@@ -934,7 +1245,7 @@ export function Inventory() {
                         )}
                         <Button
                           act="invdel"
-                          className="d"
+                          className="menu-item d"
                           onClick={() =>
                             dialog(
                               <Confirm

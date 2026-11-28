@@ -17,6 +17,14 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
+      rolldownOptions: {
+        output: {
+          // Tesseract looks up the model by its language code inside this directory.
+          assetFileNames: ({ names }) => names.includes('eng.traineddata.gz')
+            ? 'assets/ocr/eng.traineddata.gz'
+            : 'assets/[name]-[hash][extname]',
+        },
+      },
     },
     plugins: [
 react(),

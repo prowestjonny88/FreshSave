@@ -1,6 +1,15 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useLocation } from "react-router";
 import type { Commands, Result, Services, ViewData } from "../services/contracts.ts";
+import { showDeviceReminders } from "../services/reminders.ts";
 
 interface Settings {
   distance: number | "all";
@@ -77,6 +86,8 @@ export function Provider({ services, children }: { services: Services; children:
         if (active) {
           setView({ key, data });
           setFailure(undefined);
+          if (data.session)
+            showDeviceReminders(`${services.mode}.${data.session.user.id}`, data.notifs);
         }
       })
       .catch((cause) => {
@@ -111,7 +122,7 @@ export function Provider({ services, children }: { services: Services; children:
       return true;
     };
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     setModal(null);
     dialogLock.current = null;
     priorFocus.current = null;

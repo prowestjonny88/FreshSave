@@ -14,6 +14,15 @@ await b.hash('#/dashboard')
 ok(!(await b.text('#main')).includes('Marigold Natural Yoghurt'), 'Today leaves past-date food out of Use soon')
 await b.hash('#/inventory?st=expired')
 ok(await b.has('.acts-cell > [data-id=i4][data-s=discarded]') && await b.has('.more [data-id=i4][data-s=consumed]'), 'past use-by food offers Discard first and keeps Mark as used in More actions')
+await b.eval(`document.querySelector('.more [data-id=i4]').closest('details').querySelector('summary').click()`)
+ok(await b.eval(`
+  const menu = document.querySelector('.more[open] .more-m');
+  const actions = [...menu.querySelectorAll('button')];
+  return actions.length >= 3 && actions.every(action => {
+    const { backgroundColor, textAlign } = getComputedStyle(action);
+    return !action.classList.contains('btn') && backgroundColor === 'rgba(0, 0, 0, 0)' && textAlign === 'left';
+  });
+`), 'inventory overflow actions are neutral, left-aligned menu rows')
 // partial consumption + undo
 await b.hash('#/inventory'); const rowBtn = (id, s) => `[data-act=invdone][data-id=${id}][data-s=${s}]`
 await b.click(rowBtn('i1', 'consumed')); ok((await b.modal()).includes('How many used'), 'multi-unit item asks how many were used')
@@ -51,6 +60,22 @@ ok(await b.eval(`const field=document.querySelector('#bc-code'); return field.va
 await b.act('bcsample', '[data-c="9556041610018"]'); ok((await b.text('#main')).includes('Dutch Lady Full Cream Milk 1L') && (await b.text('#main')).includes('sample catalogue'), 'valid barcode found in demo catalogue')
 ok(!(await b.has('#bc-code-error, #bc-code[aria-invalid]')), 'valid barcode clears the inline error')
 await b.act('bcuse'); await b.sleep(300); eq(await b.eval('return location.hash'), '#/scan/result', 'barcode flows to the date confirmation page')
+await b.click('[data-b="res.expiryType"][value="best-before"]')
+await b.type('#res-expiry', '2026-12-12')
+await b.check('[data-b="res.ok"]')
+await b.eval(`
+  const file = document.querySelector('#barcode-label');
+  const transfer = new DataTransfer();
+  transfer.items.add(new File(['not an image'], 'unreadable.jpg', { type: 'image/jpeg' }));
+  file.files = transfer.files;
+  file.dispatchEvent(new Event('change', { bubbles: true }));
+`)
+await b.sleep(200)
+ok((await b.text('.scan-review')).includes('Try another photo'), 'unreadable replacement offers an explicit retry')
+ok(await b.eval(`return !document.querySelector('#res-expiry').value && !document.querySelector('[data-b="res.expiryType"]:checked') && !document.querySelector('[data-b="res.ok"]').checked`), 'unreadable replacement clears the previous date, date type and confirmation')
+await b.eval(`document.querySelector('#f-res').requestSubmit()`)
+await b.sleep(200)
+eq(await b.eval('return location.hash'), '#/scan/result', 'cannot save using the previous verification after replacing a label')
 // manual add: date requires confirmation; past date warns
 await b.hash('#/inventory'); await b.act('addmanual'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(250)
 ok(await b.eval(`const field = document.querySelector('#man-name'); return document.activeElement === field && field.getAttribute('aria-invalid') === 'true' && document.getElementById(field.getAttribute('aria-describedby'))?.textContent.includes('Enter the product name')`), 'invalid manual entry focuses the field and associates its error')
@@ -62,8 +87,36 @@ ok(!(await b.eval(`return document.querySelector('#man-past').hidden`)), 'past d
 ok(await b.eval(`const m=document.querySelector('#modal'); return m.contains(document.activeElement)`), 'focus is inside the dialog')
 await b.eval(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`); await b.sleep(150); ok(!(await b.modalOpen()), 'Escape closes the dialog')
 // reminders wording
-await b.hash('#/notifications'); const nt = await b.text('#main'); ok(nt.includes('In-app only') && nt.includes('no push') || nt.includes('Nothing is sent by push'), 'notifications page says reminders are in-app only')
+await b.hash('#/notifications'); const nt = await b.text('#main'); ok(nt.includes('while FreshSave is open'), 'notifications explain when optional device alerts work')
 await b.hash('#/profile'); ok((await b.text('#main')).includes('No push, SMS or email is sent') && (await b.text('#main')).includes('plain text'), 'settings state in-app scope and plain-text password')
+const failingAlerts = `window.Notification = class {
+  static permission = 'granted';
+  static async requestPermission() { return 'granted'; }
+  constructor() {
+    window.deliveryAttempts = (window.deliveryAttempts || 0) + 1;
+    throw new Error('Browser rejected the alert');
+  }
+};`
+const alertMock = await b.send('Page.addScriptToEvaluateOnNewDocument', { source: failingAlerts })
+await b.eval(failingAlerts + "window.dispatchEvent(new Event('focus'))")
+await b.check('[data-pref=device]')
+ok((await b.text('#device-alert-status')).includes('Cannot deliver') && (await b.text('#device-alert-status')).includes('In-app reminders are still available'), 'delivery failure explains that in-app reminders still work')
+eq(await b.eval('return window.deliveryAttempts'), 1, 'stops trying after the first rejected device alert')
+await b.reload()
+ok((await b.text('#device-alert-status')).includes('Cannot deliver'), 'delivery failure stays visible after reload')
+eq(await b.eval('return window.deliveryAttempts || 0'), 0, 'reloading does not attempt another delivery')
+await b.eval(`window.Notification = class {
+  static permission = 'granted';
+  static async requestPermission() { return 'granted'; }
+};`)
+await b.check('[data-pref=device]', false)
+ok((await b.text('#device-alert-status')).startsWith('Off'), 'switching off clears the error')
+await b.check('[data-pref=device]')
+ok((await b.text('#device-alert-status')).startsWith('On'), 'switching back on retries delivery')
+await b.check('[data-pref=device]', false)
+await b.reload()
+ok((await b.text('#device-alert-status')).startsWith('Off'), 'device alerts stay off after reload')
+await b.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: alertMock.identifier })
 
 // timers: stale requests and pickups expire and release units
 await b.hash('#/item/l4'); await b.act('reserve'); await b.act('mok'); await b.sleep(300)

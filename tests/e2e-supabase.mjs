@@ -39,6 +39,14 @@ async function signIn(b, email, destination) {
   await b.eval("document.querySelector('#f-login').requestSubmit()")
   await until(b, destination)
 }
+async function waitForControl(b, selector) {
+  const start = Date.now()
+  while (Date.now() - start < 12_000) {
+    if (await b.has(selector)) return
+    await b.sleep(150)
+  }
+  throw new Error(`${selector} unavailable at ${await b.eval('return location.hash')}`)
+}
 
 const buyerApi = await api(buyerEmail), sellerApi = await api(sellerEmail), secondApi = await api(secondEmail)
 const singleUnit = '03000000-0000-4000-8000-000000000001'
@@ -67,6 +75,46 @@ let published
 try {
   await signIn(seller, sellerEmail, 'Needs your action')
   await signIn(buyer, buyerEmail, 'Find food')
+  await buyer.hash('#/scan')
+  await waitForControl(buyer, '#label-photo')
+  const expectedDate = await buyer.eval(`
+    const date = new Date(Date.now() + 10 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+    const [year, month, day] = date.split('-');
+    const canvas = document.createElement('canvas');
+    canvas.width = 1100; canvas.height = 360;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'black'; ctx.font = '64px Arial';
+    ctx.fillText('EXP ' + day + '/' + month + '/' + year, 60, 120);
+    ctx.fillText('MFG 01/01/2025', 60, 260);
+    const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([png], 'test-label.png', { type: 'image/png' }));
+    const field = document.querySelector('#label-photo');
+    field.files = transfer.files;
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    return date;
+  `)
+  await until(buyer, 'Date read from photo', 60_000)
+  assert.equal(await buyer.eval("return document.querySelector('#res-expiry').value"), expectedDate)
+  await buyer.type('#res-name', 'OCR test label')
+  await buyer.type('#res-cat', 'pantry')
+  await buyer.eval("document.querySelector('#f-res').requestSubmit()")
+  await until(buyer, 'Tick the box')
+  await buyer.check('[data-b="res.ok"]')
+  await buyer.eval("document.querySelector('#f-res').requestSubmit()")
+  await until(buyer, 'OCR test label')
+  const scanned = await buyerApi.from('inventory').select('expiry,date_type,details').eq('details->>name', 'OCR test label').single()
+  assert.equal(scanned.error, null, scanned.error?.message)
+  assert.equal(scanned.data.expiry, expectedDate)
+  assert.equal(scanned.data.date_type, 'use-by')
+  assert.ok(scanned.data.details.photo)
+  console.log('PASS browser OCR reads expiry before manufacturing, requires confirmation, and saves the label to shared inventory')
+  await buyer.hash('#/barcode')
+  await buyer.type('#bc-code', '9556041610018')
+  await buyer.eval("document.querySelector('#f-bc').requestSubmit()")
+  await until(buyer, 'Dutch Lady Full Cream Milk 1L')
+  console.log('PASS barcode lookup uses the shared catalogue')
   await seller.hash('#/batch/02000000-0000-4000-8000-000000000002/list')
   await until(seller, 'Count stock to offer on Rescue')
   await seller.type('#bl-remaining', '2')
@@ -123,9 +171,8 @@ try {
   assert.deepEqual((await read(buyerApi, id)).terms, before.terms)
   await seller.hash('#/reservation/' + id)
   await until(seller, 'Ready for pickup')
-  await seller.sleep(350)
   await seller.click('[data-act=rhandover]')
-  assert.equal(await seller.has('#ho-code'), true, await seller.text('#modal'))
+  await waitForControl(seller, '#ho-code')
   await seller.type('#ho-code', code)
   await seller.check('#ho-item')
   await seller.check('#ho-pay')
@@ -140,7 +187,7 @@ try {
   await buyer.click('[data-act=addfrom]')
   await buyer.check('[data-b="man.ok"]')
   await buyer.eval("document.querySelector('#f-man').requestSubmit()")
-  await until(buyer, 'My food')
+  await waitForControl(buyer, '#main[data-page="inventory"] tbody tr.hl')
   const itemId = new URLSearchParams((await buyer.eval('return location.hash')).split('?')[1]).get('item')
   assert.ok(itemId)
   await buyer.hash('#/reservation/' + id)

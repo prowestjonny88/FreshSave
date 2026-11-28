@@ -392,7 +392,7 @@ function ListingAction({
   const act = action === "move" ? "moved" : action === "withdraw" ? "lremove" : "lreturn";
   return (
     <Button
-      className={primary ? "btn" : action === "withdraw" ? "d" : "ibtn go"}
+      className={primary ? "btn" : action === "withdraw" ? "menu-item d" : "ibtn go"}
       act={act}
       data-id={l.id}
       onClick={() =>

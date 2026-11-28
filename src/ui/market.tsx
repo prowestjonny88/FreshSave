@@ -120,7 +120,7 @@ export function MarketSearch() {
             {text ? (
               <>
                 <Button className="row" onClick={() => search(text)}>
-                  Search “{text}”
+                  <span className="search-query">Search “{text}”</span>
                 </Button>
                 {suggestions.slice(0, 5).map((item) => (
                   <Link key={item.id} className="row" to={"/item/" + item.id}>
@@ -134,12 +134,20 @@ export function MarketSearch() {
               </>
             ) : (
               <>
-                <h6>
-                  Recent searches{" "}
-                  <Button className="link" onClick={() => run("clearSearch", undefined)}>
-                    Clear
-                  </Button>
-                </h6>
+                {!!data.recent.length && (
+                  <h6>
+                    Recent searches
+                    <Button
+                      className="link"
+                      onClick={() => {
+                        searchInput.current?.focus();
+                        void run("clearSearch", undefined);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </h6>
+                )}
                 {data.recent.map((value) => (
                   <Button className="row" key={value} onClick={() => search(value)}>
                     {value}
@@ -190,7 +198,8 @@ export function MarketSearch() {
 }
 
 function AreaPicker() {
-  const { run, close, notify } = useUI();
+  const { data, run, close, notify } = useUI();
+  const currentArea = areaOf(data).id;
   const setArea = async (id: string) => {
     const result = await run("area", { id });
     if (result.ok) close();
@@ -222,14 +231,14 @@ function AreaPicker() {
       <div className="loclist">
         {LOCATIONS.map((area) => (
           <Button
-            className="hbtn"
             key={area.id}
+            className="area-option"
             act="setloc"
             data-id={area.id}
+            aria-current={area.id === currentArea || undefined}
             onClick={() => setArea(area.id)}
           >
-            <b>{area.short}</b>
-            <small>{area.name}</small>
+            {area.name}
           </Button>
         ))}
       </div>

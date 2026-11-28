@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { CATEGORIES, ELIGIBILITY, LOCATIONS, photo } from "../data.js";
 import { listingLedger, type Preferences } from "../domain/model.ts";
@@ -23,6 +23,94 @@ import {
   units,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
+import {
+  alertsEnabled,
+  deviceAlertChange,
+  deviceAlertStatus,
+  setDeviceAlerts,
+  showDeviceReminders,
+} from "../services/reminders.ts";
+
+function DeviceAlerts() {
+  const { data, mode } = useUI();
+  const account = `${mode}.${data.session?.user.id}`;
+  const [status, setStatus] = useState(() => deviceAlertStatus(account));
+  const [busy, setBusy] = useState(false);
+  const [permissionMessage, setPermissionMessage] = useState("");
+  useEffect(() => {
+    const refresh = () => setStatus(deviceAlertStatus(account));
+    window.addEventListener(deviceAlertChange, refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener(deviceAlertChange, refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [account]);
+  const states = {
+    off: ["Off", "Turn on browser alerts for date and stock reminders."],
+    on: ["On", "Browser alerts are on while FreshSave is open."],
+    blocked: [
+      "Blocked",
+      "Allow notifications in your browser’s site settings to turn on device alerts.",
+    ],
+    unsupported: ["Unavailable", "This browser doesn’t support device alerts."],
+    "delivery-unavailable": [
+      "Cannot deliver",
+      "This browser allowed notifications but couldn’t show an alert. You can turn off device alerts and try again.",
+    ],
+  } as const;
+  const [statusLabel, description] = states[status];
+  return (
+    <div className="device-alerts">
+      <label className="toggle">
+        <span>
+          <b>Device alerts</b>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-describedby="device-alert-status"
+          data-pref="device"
+          checked={status === "on" || status === "delivery-unavailable"}
+          disabled={busy || status === "blocked" || status === "unsupported"}
+          onChange={async (event) => {
+            const checked = event.target.checked;
+            setPermissionMessage("");
+            setBusy(true);
+            const saved = await setDeviceAlerts(account, checked);
+            if (saved && checked && alertsEnabled(account))
+              showDeviceReminders(account, data.notifs);
+            const next = deviceAlertStatus(account);
+            setStatus(next);
+            setBusy(false);
+            if (!saved && next !== "blocked")
+              setPermissionMessage(
+                "The setting didn’t change. Try again or check your browser permissions.",
+              );
+          }}
+        />
+        <i />
+      </label>
+      <div className="device-alert-status" id="device-alert-status" role="status">
+        <b
+          className={
+            status === "blocked" || status === "delivery-unavailable"
+              ? "device-alert-attention"
+              : undefined
+          }
+        >
+          {busy ? "Checking permission…" : statusLabel}
+        </b>
+        <span>{permissionMessage || description}</span>
+        {(status === "blocked" ||
+          status === "unsupported" ||
+          status === "delivery-unavailable") && <span>In-app reminders are still available.</span>}
+      </div>
+    </div>
+  );
+}
 
 export function Dashboard() {
   const { data, run } = useUI(),
@@ -281,8 +369,8 @@ export function Notifications() {
       )}
       <p className="hintline">
         <span>
-          <b>In-app only.</b> Date reminders appear here when they’re due. FreshSave sends no push,
-          SMS or email reminders.
+          Date reminders appear here when they’re due. Supported browsers can also show device
+          alerts while FreshSave is open.
         </span>
       </p>
       <div className="tabs">
@@ -582,10 +670,11 @@ export function ProfilePage() {
         </form>
         <div>
           <section className="form">
-            <h2>In-app notifications</h2>
+            <h2>Notifications</h2>
             <p className="mute sm">
-              No push, SMS or email is sent. These preferences control what appears in FreshSave.
+              No push, SMS or email is sent. Device alerts require browser permission.
             </p>
+            <DeviceAlerts key={user.id} />
             {preferenceLabels
               .filter(([key]) => key !== "stock" || retailer)
               .map(([key, text]) => (
@@ -757,8 +846,8 @@ export function About() {
               ],
               [
                 "Food scanning",
-                "Simulated",
-                "You confirm the date and type against the pack before saving.",
+                "Photo OCR + samples",
+                "Read a label in your browser or try a sample. Confirm the date and type before saving.",
               ],
               [
                 "Barcode lookup",
@@ -766,7 +855,11 @@ export function About() {
                 "A sample catalogue plus products registered through FreshSave.",
               ],
               ["Distances", "Approximate", "Estimated between sample neighbourhoods."],
-              ["Reminders", "In-app only", "FreshSave displays reminders and reservation status."],
+              [
+                "Reminders",
+                "In-app + device",
+                "Optional browser alerts work while FreshSave is open.",
+              ],
               [
                 "Pickup",
                 "Code-checked",

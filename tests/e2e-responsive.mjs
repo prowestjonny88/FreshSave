@@ -45,6 +45,18 @@ for (const role of ['individual', 'retailer']) {
       if (role === 'retailer') {
         await b.hash('#/listings?tab=live')
         ok(await b.eval(`const rows = [...document.querySelectorAll('.work-table tbody tr')]; return rows.length > 0 && rows.every(row => { const units = row.querySelector('.units'); const cell = units.closest('td'); return units.getBoundingClientRect().right <= cell.getBoundingClientRect().right + 1 && units.scrollWidth <= units.clientWidth + 1; })`), 'phone listing unit summaries stay inside their cells')
+        await b.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 480, deviceScaleFactor: 1, mobile: true })
+        for (const id of ['mpop', 'npop']) {
+          await b.act(id)
+          ok(await b.eval(`
+            const panel = document.querySelector('#${id}');
+            const box = panel.getBoundingClientRect();
+            const nav = document.querySelector('#bnav').getBoundingClientRect();
+            panel.scrollTop = panel.scrollHeight;
+            const action = panel.querySelector('.pi:last-child').getBoundingClientRect();
+            return box.left >= 0 && box.right <= innerWidth && box.bottom <= nav.top && action.bottom <= box.bottom;
+          `), `${id} dropdown stays above the bottom navigation and exposes its last action on short phones`)
+        }
       }
     }
     if (role === 'individual' && w === 390) {

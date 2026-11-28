@@ -15,6 +15,8 @@ pnpm dev --host 127.0.0.1
 
 Open [FreshSave](http://127.0.0.1:8443/). The standalone demo is the default, including in Figma Make. Its two sample accounts and records are stored in the browser. The login page has shortcuts for both accounts.
 
+**Add food** and **Add stock** can read a date-label photo in the browser. Check the suggested date and date type against the pack before saving. The camera and upload options sit alongside the deterministic sample scans and manual entry. Barcode lookup also supports camera input, with typed entry as a fallback. Optional device reminders require browser permission and work while FreshSave is open.
+
 ## Run the shared local app
 
 1. Start Docker Desktop with Linux containers. Install dependencies with the command above. The repo includes the Supabase CLI.

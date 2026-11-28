@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type ReactNode,
+} from "react";
 import {
   Link,
   Navigate,
@@ -168,6 +175,11 @@ function Header() {
       </Link>
     );
   }
+  function closeOnFocusLeave(event: FocusEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    const panel = event.currentTarget === notificationWrap.current ? "notifications" : "profile";
+    setPop((current) => (current === panel ? null : current));
+  }
   function setChat(value: string | null) {
     const next = new URLSearchParams(params);
     if (value === null) next.delete("chat");
@@ -208,7 +220,7 @@ function Header() {
                 <Glyph name="chat" />
               </Button>
             )}
-            <div className="hwrap" ref={notificationWrap}>
+            <div className="hwrap" ref={notificationWrap} onBlur={closeOnFocusLeave}>
               <Button
                 className="hbtn"
                 act="npop"
@@ -255,7 +267,7 @@ function Header() {
                 </div>
               )}
             </div>
-            <div className="hwrap" ref={profileWrap}>
+            <div className="hwrap" ref={profileWrap} onBlur={closeOnFocusLeave}>
               <Button
                 className="hbtn prof"
                 act="mpop"

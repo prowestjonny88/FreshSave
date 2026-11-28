@@ -22,6 +22,8 @@ ok(await b.eval(`return document.querySelector('#sdrop').checkVisibility()`), 'c
 await b.eval(`document.querySelector('#hdr-dist').focus()`)
 await b.sleep(120)
 ok(await b.eval(`return !document.querySelector('#sdrop').checkVisibility()`), 'moving focus outside the search box dismisses the panel')
+await b.type('#q', 'FreshSave'.repeat(32))
+ok(await b.eval(`const panel = document.querySelector('#sdrop'); return panel.checkVisibility() && panel.scrollWidth <= panel.clientWidth + 1`), 'long search suggestions wrap without horizontal scrolling')
 
 // search suggestion respects the distance filter
 await b.act('setdist', '[data-v="2"]').catch(() => {})

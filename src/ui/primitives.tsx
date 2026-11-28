@@ -382,10 +382,16 @@ export function useFormErrorFocus(error: string | object | undefined) {
   }, [error]);
   return form;
 }
-export function Categories({ rescue = false }: { rescue?: boolean }) {
+export function Categories({
+  rescue = false,
+  placeholder = "Select a category",
+}: {
+  rescue?: boolean;
+  placeholder?: string;
+}) {
   return (
     <>
-      <option value="">Select a category</option>
+      <option value="">{placeholder}</option>
       {CATEGORIES.filter((c) => c.id !== "all" && (!rescue || RESCUE_CATS.includes(c.id))).map(
         (c) => (
           <option value={c.id} key={c.id}>
