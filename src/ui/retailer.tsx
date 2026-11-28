@@ -1,3 +1,4 @@
+import { Select } from "./select.tsx";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { CAT_KIND, ELIGIBILITY, photo } from "../data.js";
@@ -1087,7 +1088,7 @@ function ListingEditor({
         label="Food type and storage"
         error={error?.field === "pack" ? error.message : undefined}
       >
-        <select
+        <Select
           id={prefix + "-pack"}
           value={draft.pack}
           disabled={locked}
@@ -1108,7 +1109,7 @@ function ListingEditor({
               </option>
             ))}
           </optgroup>
-        </select>
+        </Select>
       </Field>
       <fieldset className="decl">
         <legend>Seller declarations</legend>
@@ -1313,10 +1314,7 @@ function ListingEditor({
                   Buyers currently hold units, so the product details and date are locked.
                 </Note>
               )}
-              <Field
-                id="wz-photos"
-                label="Product photos (up to 4)"
-              >
+              <Field id="wz-photos" label="Product photos (up to 4)">
                 <div className="upl">
                   {draft.photos.map((src, i) => (
                     <div className="slot" key={i}>
@@ -1365,14 +1363,14 @@ function ListingEditor({
                 label="Category"
                 error={errorField === "cat" ? error?.message : undefined}
               >
-                <select
+                <Select
                   id="wz-cat"
                   value={draft.cat}
                   disabled={locked}
                   onChange={(event) => set("cat", event.target.value)}
                 >
                   <Categories rescue />
-                </select>
+                </Select>
               </Field>
               <Field
                 id="wz-desc"

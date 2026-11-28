@@ -13,10 +13,11 @@ import { Link, useSearchParams } from "react-router";
 import { CATEGORIES, photo, RESCUE_CATS, catLabel } from "../data.js";
 import type { Listing, Notification, Store, UnitLedger } from "../domain/model.ts";
 import type { DateType } from "../domain/time.ts";
-import { STORE_ZONE, daysUntil, formatDeadline, storeTime } from "../domain/time.ts";
+import { DAY, STORE_ZONE, daysUntil, formatDeadline, storeTime } from "../domain/time.ts";
 import type { Result } from "../services/contracts.ts";
 import unavailableImage from "../image-unavailable.svg";
 import { useUI } from "./state.tsx";
+import { Select } from "./select.tsx";
 
 export const rm = (value: number) => "RM" + value.toFixed(2);
 export const dateWord = (type: DateType) => (type === "use-by" ? "Use by" : "Best before");
@@ -335,7 +336,7 @@ export function Field({
   const control =
     isValidElement<AriaAttributes & { id?: string }>(children) &&
     children.props.id === id &&
-    (children.type === "input" || children.type === "select" || children.type === "textarea");
+    (children.type === "input" || children.type === Select || children.type === "textarea");
   const hintId = id + "-hint",
     errorId = id + "-error";
   const content = control
@@ -622,6 +623,9 @@ export function Card({
   preview?: boolean;
 }) {
   const { name, photos, price, orig, expiry, expiryType } = listing;
+  const cutoff = listing.pickupUntil && listing.pickTo ? listingCutoff(listing) : undefined;
+  const now = Date.now();
+  const bookingClosesSoon = !preview && cutoff !== undefined && cutoff > now && cutoff - now <= DAY;
   const discount = orig > price && price > 0 ? Math.round((1 - price / orig) * 100) : 0;
   const contents = (
     <>
@@ -630,6 +634,15 @@ export function Card({
           <Picture src={photos[0]} alt={name} loading="lazy" />
         ) : (
           <span className="no-seller-photo">No seller photo</span>
+        )}
+        {bookingClosesSoon && (
+          <span className="card-booking-soon">
+            <svg className="ico sm" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span>Booking closes within 24 hours</span>
+          </span>
         )}
       </div>
       <div className="bd">
@@ -644,19 +657,21 @@ export function Card({
           {distance !== undefined && <>≈{distance} km · </>}
           {listing.units?.avail ?? listing.total} left
         </div>
-        <div className="card-dates">
-          <div className="card-printed-date">
-            <span className={"dtype" + (expiryType === "use-by" ? " use" : "")}>
-              {dateWord(expiryType)}
-            </span>{" "}
-            <time dateTime={expiry}>{formatDate(expiry)}</time>
-          </div>
-          {listing.pickupUntil && listing.pickTo && (
-            <div className="card-pickup">
-              <b>Listing cutoff</b> {formatDeadline(listingCutoff(listing))}
+        {preview && (
+          <div className="card-dates">
+            <div className="card-printed-date">
+              <span className={"dtype" + (expiryType === "use-by" ? " use" : "")}>
+                {dateWord(expiryType)}
+              </span>{" "}
+              <time dateTime={expiry}>{formatDate(expiry)}</time>
             </div>
-          )}
-        </div>
+            {cutoff !== undefined && (
+              <div className="card-pickup">
+                <b>Listing cutoff</b> {formatDeadline(cutoff)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

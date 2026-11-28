@@ -1,3 +1,4 @@
+import { Select } from "./select.tsx";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { LOCATIONS, photo } from "../data.js";
@@ -37,12 +38,11 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
         ? "Your email was confirmed. Log in to finish setting up your profile."
         : "";
   useEffect(() => {
-    if (
-      data.session && // Keep the new-account destination from the submit handler.
-      !busy
-    )
-      navigate(data.session.user.role === "retailer" ? "/dashboard" : "/market", { replace: true });
-  }, [data.session?.user.id, busy, navigate]);
+    if (!data.session || busy) return;
+    const destination =
+      page === "register" || data.session.user.role === "retailer" ? "/dashboard" : "/market";
+    navigate(destination, { replace: true });
+  }, [data.session?.user.id, busy, navigate, page]);
   useEffect(() => {
     setError("");
     setSent(false);
@@ -107,12 +107,12 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
   );
   return (
     <div className="auth">
-      <aside
-        className="auth-brand"
-        style={{
-          backgroundImage: `linear-gradient(180deg,#cc4a30e8,#cc4a30d4 45%,#9e3822f5),url('${photo("aisle", 0, 900)}')`,
-        }}
-      >
+      <aside className="auth-brand">
+        <div
+          className="auth-brand-photo"
+          aria-hidden="true"
+          style={{ backgroundImage: `url('${photo("aisle", 0, 900)}')` }}
+        />
         <Brand light to="/login" />
         <div>
           <h2>Know what’s in your kitchen. Find sealed surplus food nearby.</h2>
@@ -251,13 +251,13 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
                     id="a-loc"
                     label={role === "retailer" ? "Store neighbourhood" : "Preferred location"}
                   >
-                    <select name="loc" id="a-loc">
+                    <Select name="loc" id="a-loc">
                       {LOCATIONS.map((area) => (
                         <option key={area.id} value={area.id}>
                           {area.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </Field>
                   {role === "retailer" && (
                     <>

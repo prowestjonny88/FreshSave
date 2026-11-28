@@ -1,3 +1,4 @@
+import { Select } from "./select.tsx";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { SCAN_SAMPLES } from "../data.js";
@@ -17,7 +18,6 @@ import {
   Field,
   formatDate,
   Heading,
-  Menu,
   Note,
   PageNavigation,
   Picture,
@@ -276,13 +276,13 @@ export function FoodForm({
       {input("name", "Product name")}
       <div className="cols">
         <Field id={prefix + "-cat"} label="Category" error={errors.cat}>
-          <select
+          <Select
             id={prefix + "-cat"}
             value={values.cat}
             onChange={(event) => change("cat", event.target.value)}
           >
             <Categories />
-          </select>
+          </Select>
         </Field>
         {input("qty", retailer ? "Quantity received" : "Quantity", "number")}
       </div>
@@ -290,20 +290,39 @@ export function FoodForm({
         <div className="cd-head">
           <b>Confirm the date on the pack</b>
         </div>
-        <DateTypeFields
-          prefix={prefix}
-          value={values.expiryType}
-          error={errors.expiryType}
-          onChange={(value) => change("expiryType", value)}
-        />
-        {input(
-          "expiry",
-          "Date on the pack",
-          "date",
-          suggested
-            ? "Suggested: " + formatDate(suggested)
-            : "Enter the date printed on the package.",
-        )}
+        <div className={retailer ? undefined : "cols"}>
+          {retailer ? (
+            <DateTypeFields
+              prefix={prefix}
+              value={values.expiryType}
+              error={errors.expiryType}
+              onChange={(value) => change("expiryType", value)}
+            />
+          ) : (
+            <Field id={prefix + "-expiryType"} label="Date type" error={errors.expiryType}>
+              <Select
+                id={prefix + "-expiryType"}
+                data-b={prefix + ".expiryType"}
+                value={values.expiryType}
+                onChange={(event) => change("expiryType", event.target.value as DateType | "")}
+              >
+                <option value="">Choose the wording on the pack</option>
+                <option value="best-before">Best before</option>
+                <option value="use-by">Use by</option>
+              </Select>
+            </Field>
+          )}
+          {input(
+            "expiry",
+            "Date on the pack",
+            "date",
+            suggested
+              ? "Suggested: " + formatDate(suggested)
+              : retailer
+                ? "Enter the date printed on the package."
+                : undefined,
+          )}
+        </div>
         {suggested && suggested !== values.expiry && (
           <Button act="usesuggest" className="link sm" onClick={() => change("expiry", suggested)}>
             Use this date
@@ -847,9 +866,9 @@ export function Barcode() {
                 <input id="bcnew-name" name="name" disabled={savingProduct} />
               </Field>
               <Field label="Category" id="bcnew-cat">
-                <select name="cat" id="bcnew-cat" disabled={savingProduct}>
+                <Select name="cat" id="bcnew-cat" disabled={savingProduct}>
                   <Categories />
-                </select>
+                </Select>
               </Field>
               <div className="row-acts">
                 <Button type="submit" disabled={savingProduct}>
@@ -913,9 +932,18 @@ function UseFood({
   );
 }
 
+const inventoryCategories = [
+  { label: "Fruits & vegetables", categories: ["produce"] },
+  { label: "Dairy & eggs", categories: ["dairy"] },
+  { label: "Meat, seafood & frozen", categories: ["meat", "frozen"] },
+  { label: "Bakery", categories: ["bakery"] },
+  { label: "Pantry & drinks", categories: ["pantry", "drinks"] },
+  { label: "Other", categories: ["others"] },
+];
+
 export function Inventory() {
   const { data, run, dialog, notify } = useUI(),
-    [params] = useSearchParams();
+    [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(""),
     [category, setCategory] = useState(""),
     [sort, setSort] = useState("exp");
@@ -929,6 +957,7 @@ export function Inventory() {
   }>();
   const active = data.inventory.filter((item) => item.status === "active"),
     now = Date.now();
+  const total = data.inventoryTotal ?? active.length;
   const selected = params.get("item"),
     selectedFood = data.inventory.find((item) => item.id === selected),
     key = selectedFood
@@ -938,6 +967,9 @@ export function Inventory() {
       : params.get("st") || "active",
     soon = ["d1", "d3", "d7"].includes(key);
   const tab = soon ? "d7" : ["history", "expired"].includes(key) ? key : "active";
+  const categories = inventoryCategories.find(
+    (group) => group.categories[0] === category,
+  )?.categories;
   const matches = (item: InventoryItem, filter: string) => {
     if (filter === "history") return item.status !== "active";
     if (filter === "active") return item.status === "active";
@@ -952,18 +984,16 @@ export function Inventory() {
       (selected ? item.id === selected : matches(item, soon ? key : tab)) &&
       (key !== "fresh" || daysUntil(item.expiry, now) > 7) &&
       item.name.toLowerCase().includes(query.toLowerCase()) &&
-      (!category || item.cat === category),
+      (!categories || categories.includes(item.cat)),
   );
   rows.sort((a, b) =>
     tab === "history"
       ? (b.closedAt || 0) - (a.closedAt || 0)
-      : sort === "new"
-        ? b.addedAt - a.addedAt
-        : sort === "name"
-          ? a.name.localeCompare(b.name)
-          : sort === "qty"
-            ? b.qty - a.qty
-            : a.expiry.localeCompare(b.expiry),
+      : sort === "name"
+        ? a.name.localeCompare(b.name)
+        : sort === "qty"
+          ? b.qty - a.qty
+          : a.expiry.localeCompare(b.expiry),
   );
   useLayoutEffect(() => {
     if (!focusRequest) return;
@@ -1027,17 +1057,11 @@ export function Inventory() {
     <>
       <Heading
         title="My food"
-        sub={active.length + " items at home"}
-        group="Track"
+        sub={`Total: ${total} ${total === 1 ? "item" : "items"}`}
         action={
-          <>
-            <Link className="btn" to="/scan">
-              Scan food
-            </Link>
-            <Button act="addmanual" className="btn sec" onClick={() => dialog(<FoodForm popup />)}>
-              Enter by hand
-            </Button>
-          </>
+          <Link className="btn" to="/scan">
+            Add food
+          </Link>
         }
       />
       {selected && (
@@ -1060,26 +1084,7 @@ export function Inventory() {
           }))}
         />
       </div>
-      {soon && (
-        <div className="chips">
-          <span className="mute">Due within</span>
-          {[
-            ["d1", "Today & tomorrow"],
-            ["d3", "3 days"],
-            ["d7", "7 days"],
-          ].map(([id, label]) => (
-            <Link
-              className={"chip" + (id === key ? " on" : "")}
-              key={id}
-              to={"/inventory?st=" + id}
-            >
-              {label} <span>{data.inventory.filter((item) => matches(item, id)).length}</span>
-            </Link>
-          ))}
-          <span className="mute sm">Includes everything due sooner, including today.</span>
-        </div>
-      )}
-      {(data.inventory.length > 5 || query || category) && (
+      {!selected && (data.inventory.length > 0 || query || category) && (
         <div className="tbar">
           <div className="tsearch">
             <input
@@ -1094,27 +1099,59 @@ export function Inventory() {
           <Disclosure title="Filter & sort" className="flat">
             <label>
               Category
-              <select
+              <Select
                 className="sel"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               >
-                <Categories placeholder="All categories" />
-              </select>
+                <option value="">All categories</option>
+                {inventoryCategories.map(({ label, categories: [id] }) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
             </label>
-            <label>
-              Sort by
-              <select
-                className="sel"
-                value={sort}
-                onChange={(event) => setSort(event.target.value)}
-              >
-                <option value="exp">Date: soonest first</option>
-                <option value="new">Recently added</option>
-                <option value="name">Name A–Z</option>
-                <option value="qty">Quantity</option>
-              </select>
-            </label>
+            {tab !== "history" && (
+              <label>
+                Sort by
+                <Select
+                  className="sel"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value)}
+                >
+                  <option value="exp">Printed date (soonest first)</option>
+                  <option value="name">Name A–Z</option>
+                  <option value="qty">Quantity</option>
+                </Select>
+              </label>
+            )}
+            {(soon || tab === "active") && (
+              <label>
+                Date on pack
+                <Select
+                  className="sel"
+                  value={soon ? key : "active"}
+                  onChange={(event) => {
+                    const next = new URLSearchParams(params);
+                    next.set("st", event.target.value);
+                    next.delete("offset");
+                    setParams(next);
+                  }}
+                >
+                  <option value="active">Any date</option>
+                  {[
+                    ["d1", "Today or tomorrow"],
+                    ["d3", "Due within 3 days"],
+                    ["d7", "Due within 7 days"],
+                  ].map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label} ({data.inventory.filter((item) => matches(item, id)).length})
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            )}
           </Disclosure>
         </div>
       )}
@@ -1132,156 +1169,124 @@ export function Inventory() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((item) => (
-                <tr
-                  data-food-id={item.id}
-                  className={
-                    params.get("new") === item.id || selected === item.id ? "hl" : undefined
-                  }
-                  key={item.id}
-                >
-                  <ProductCell item={item} />
-                  <td data-l="Left">
-                    {item.status === "active" ? (
-                      <>
-                        <b>{item.qty}</b>
-                        {item.initial > item.qty && (
-                          <span className="mute sm"> of {item.initial}</span>
-                        )}
-                      </>
-                    ) : (
-                      "–"
-                    )}
-                  </td>
-                  <td data-l="Date on pack">
-                    {item.status === "active" ? (
-                      <DateBadge expiry={item.expiry} type={item.expiryType} />
-                    ) : (
-                      <Badge>{item.status === "consumed" ? "Used" : "Discarded"}</Badge>
-                    )}
-                  </td>
-                  <td data-l="" className="act-c">
-                    <div className="acts-cell tight">
-                      {item.status === "active" &&
-                      item.expiryType === "use-by" &&
-                      daysUntil(item.expiry, Date.now()) < 0 ? (
-                        <Button
-                          className="ibtn"
-                          act="invdone"
-                          data-id={item.id}
-                          data-s="discarded"
-                          onClick={() => useFood(item, "discarded")}
-                        >
-                          Discard
-                        </Button>
-                      ) : item.status === "active" ? (
-                        <Button
-                          className="ibtn go"
-                          act="invdone"
-                          data-id={item.id}
-                          data-s="consumed"
-                          onClick={() => useFood(item, "consumed")}
-                        >
-                          Used
-                        </Button>
+              {rows.map((item) => {
+                const pastUseBy = item.expiryType === "use-by" && daysUntil(item.expiry, now) < 0;
+                return (
+                  <tr
+                    data-food-id={item.id}
+                    className={
+                      params.get("new") === item.id || selected === item.id ? "hl" : undefined
+                    }
+                    key={item.id}
+                  >
+                    <ProductCell item={item} />
+                    <td data-l="Left">
+                      {item.status === "active" ? (
+                        <>
+                          <b>{item.qty}</b>
+                          {item.initial > item.qty && (
+                            <span className="mute sm"> of {item.initial}</span>
+                          )}
+                        </>
                       ) : (
+                        "–"
+                      )}
+                    </td>
+                    <td data-l="Date on pack">
+                      {item.status === "active" ? (
+                        <DateBadge expiry={item.expiry} type={item.expiryType} />
+                      ) : (
+                        <Badge>{item.status === "consumed" ? "Used" : "Discarded"}</Badge>
+                      )}
+                    </td>
+                    <td data-l="" className="act-c">
+                      <div className="acts-cell tight">
+                        {item.status === "active" ? (
+                          <>
+                            <Button
+                              className={pastUseBy ? "ibtn" : "ibtn go"}
+                              act="invdone"
+                              data-id={item.id}
+                              data-s="consumed"
+                              onClick={() => useFood(item, "consumed")}
+                            >
+                              Used
+                            </Button>
+                            <Button
+                              className="ibtn icon"
+                              act="invedit"
+                              aria-label={`Edit ${item.name}`}
+                              title="Edit"
+                              onClick={() => dialog(<FoodForm popup draft={draftFor(item)} />)}
+                            >
+                              <svg className="ico sm" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="m4 16 12-12a2.8 2.8 0 0 1 4 4L8 20l-5 1zM14 6l4 4" />
+                              </svg>
+                            </Button>
+                            <Button
+                              className={pastUseBy ? "ibtn discard-priority" : "ibtn icon d"}
+                              act="invdone"
+                              data-id={item.id}
+                              data-s="discarded"
+                              aria-label={`Discard ${item.name}`}
+                              title="Discard"
+                              onClick={() => useFood(item, "discarded")}
+                            >
+                              {pastUseBy ? (
+                                "Discard"
+                              ) : (
+                                <svg className="ico sm" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M3 6h18M9 6V3h6v3m4 0-1 14H6L5 6m5 4v6m4-6v6" />
+                                </svg>
+                              )}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            className="ibtn go"
+                            act="invundo"
+                            data-id={item.id}
+                            onClick={async () => {
+                              const result = await run("undoFood", { id: item.id });
+                              if (result.ok) {
+                                focusAfterRemoval(item);
+                                notify("Restored");
+                              } else notify(result.error.message);
+                            }}
+                          >
+                            Restore
+                          </Button>
+                        )}
+                      </div>
+                      {item.status === "active" && !!item.log.length && (
                         <Button
-                          className="ibtn go"
+                          className="link sm inv-undo"
                           act="invundo"
-                          data-id={item.id}
-                          onClick={async () => {
+                          onClick={async (event) => {
+                            const primary =
+                              event.currentTarget.parentElement?.querySelector("button");
                             const result = await run("undoFood", { id: item.id });
                             if (result.ok) {
-                              focusAfterRemoval(item);
-                              notify("Restored");
+                              primary?.focus();
+                              notify("Last change undone");
                             } else notify(result.error.message);
                           }}
                         >
-                          Restore
+                          Undo last change
                         </Button>
                       )}
-                      <Menu>
-                        {item.status === "active" && (
-                          <>
-                            {item.expiryType === "use-by" &&
-                            daysUntil(item.expiry, Date.now()) < 0 ? (
-                              <Button
-                                className="menu-item"
-                                act="invdone"
-                                data-id={item.id}
-                                data-s="consumed"
-                                onClick={() => useFood(item, "consumed")}
-                              >
-                                Mark as used
-                              </Button>
-                            ) : (
-                              <Button
-                                className="menu-item"
-                                act="invdone"
-                                data-id={item.id}
-                                data-s="discarded"
-                                onClick={() => useFood(item, "discarded")}
-                              >
-                                Discard
-                              </Button>
-                            )}
-                            <Button
-                              className="menu-item"
-                              act="invedit"
-                              onClick={() => dialog(<FoodForm popup draft={draftFor(item)} />)}
-                            >
-                              Edit
-                            </Button>
-                            {!!item.log.length && (
-                              <Button
-                                className="menu-item"
-                                act="invundo"
-                                onClick={() => run("undoFood", { id: item.id })}
-                              >
-                                Undo last change
-                              </Button>
-                            )}
-                          </>
-                        )}
-                        <Button
-                          act="invdel"
-                          className="menu-item d"
-                          onClick={() =>
-                            dialog(
-                              <Confirm
-                                title="Delete this item?"
-                                action="Delete"
-                                danger
-                                submit={async () => {
-                                  const result = await run("deleteFood", { id: item.id });
-                                  if (result.ok) focusAfterRemoval(item);
-                                  return result;
-                                }}
-                              >
-                                {item.name}
-                              </Confirm>,
-                            )
-                          }
-                        >
-                          Delete
-                        </Button>
-                      </Menu>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : (
         <Empty
           title={data.inventory.length ? "Nothing here right now." : "Nothing tracked yet"}
-          text="Add food and FreshSave shows what to use first."
-        >
-          <Link className="btn" to="/scan">
-            Scan food
-          </Link>
-        </Empty>
+          text={data.inventory.length ? undefined : "Add food to track the dates on your packs."}
+        />
       )}
       <PageNavigation />
       <p className="hintline">

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Select } from "./select.tsx";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { CATEGORIES, ELIGIBILITY, LOCATIONS, photo } from "../data.js";
 import { listingLedger, type Preferences } from "../domain/model.ts";
 import { handoverMetrics } from "../domain/activity.ts";
-import { browse, listingStatus, needsToday } from "../domain/selectors.ts";
+import { listingStatus, needsToday } from "../domain/selectors.ts";
 import { DAY, daysUntil, STORE_ZONE } from "../domain/time.ts";
 import {
   Badge,
@@ -135,7 +136,6 @@ export function Dashboard() {
     })
     .sort((a, b) => a.expiry.localeCompare(b.expiry))
     .slice(0, 5);
-  const nearby = !retailer ? browse(data, "", 5).slice(0, 3) : [];
   const steps = retailer
     ? ([
         ["Record your first batch", "/scan", data.batches.length > 0],
@@ -210,7 +210,7 @@ export function Dashboard() {
     <>
       <div className="dash-hello slim">
         <div>
-          <span className="kicker">{retailer ? "Store today" : "Today"}</span>
+          {retailer && <span className="kicker">Store today</span>}
           <h1>Hello, {retailer ? store.name : user.name.split(" ")[0]}</h1>
           <p className="mute">
             {new Date().toLocaleDateString("en-MY", {
@@ -282,28 +282,7 @@ export function Dashboard() {
           </ul>
         </section>
       )}
-      {!!nearby.length && (
-        <section className="panel today-secondary">
-          <div className="panel-h">
-            <h3>Nearby on Rescue</h3>
-            <Link className="link sm" to="/market">
-              Browse all
-            </Link>
-          </div>
-          <div className="strip">
-            {nearby.map((item) => (
-              <Link className="mini" to={"/item/" + item.id} key={item.id}>
-                <Picture src={item.photos[0] || photo(item.kind)} />
-                <div className="t">
-                  {item.name}
-                  <div className="p">{rm(item.price)}</div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-      {!!data.activity.length && (
+      {retailer && !!data.activity.length && (
         <div className="fold">
           <Disclosure title="Recent activity">
             <ul className="alist">
@@ -325,11 +304,18 @@ export function Dashboard() {
 }
 
 export function Notifications() {
-  const { data, run } = useUI(),
+  const { data, run, notify } = useUI(),
     navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState("all");
-  const all = data.notifs,
-    unread = all.filter((n) => n.unread).length;
+  const [updating, setUpdating] = useState(false);
+  const tabs = useRef<HTMLDivElement>(null);
+  const all = data.notifs;
+  const unreadOnPage = all.filter((n) => n.unread).length;
+  const { read, unread } = data.notificationCounts ?? {
+    read: all.length - unreadOnPage,
+    unread: unreadOnPage,
+  };
   const urgent = needsToday(data).filter(
     (action) => action.tone === "hot" && /^\/reservations?(?:[?/]|$)/.test(action.to),
   );
@@ -341,15 +327,58 @@ export function Notifications() {
       (tab === "stock" && n.type === "stock") ||
       (tab === "resv" && ["resv", "collect"].includes(n.type)),
   );
+  async function updateNotices(clear: boolean, trigger: HTMLButtonElement) {
+    setUpdating(true);
+    const result = await (clear
+      ? run("clearReadNotifications", undefined)
+      : run("readNotification", {}));
+    setUpdating(false);
+    if (!result.ok) {
+      notify(result.error.message);
+      return;
+    }
+    if (document.activeElement === trigger || document.activeElement === document.body) {
+      tabs.current?.querySelector<HTMLElement>(".tab.on")?.focus({ preventScroll: true });
+    }
+    if (clear) {
+      if (params.has("offset")) {
+        const first = new URLSearchParams(params);
+        first.delete("offset");
+        setParams(first, { replace: true });
+      }
+      notify("Read notifications cleared");
+    }
+  }
   return (
     <>
       <Heading
         title="Notifications"
         sub={unread + " unread"}
         action={
-          <Button className="btn sec" act="readall" onClick={() => run("readNotification", {})}>
-            Mark all as read
-          </Button>
+          (read > 0 || unread > 0) && (
+            <>
+              {unread > 0 && (
+                <Button
+                  className="btn sec"
+                  act="readall"
+                  disabled={updating}
+                  onClick={(event) => updateNotices(false, event.currentTarget)}
+                >
+                  Mark all as read
+                </Button>
+              )}
+              {read > 0 && (
+                <Button
+                  className="btn sec"
+                  act="clearread"
+                  disabled={updating}
+                  onClick={(event) => updateNotices(true, event.currentTarget)}
+                >
+                  Clear read notifications
+                </Button>
+              )}
+            </>
+          )
         }
       />
       {!!urgent.length && (
@@ -373,7 +402,7 @@ export function Notifications() {
           alerts while FreshSave is open.
         </span>
       </p>
-      <div className="tabs">
+      <div className="tabs" ref={tabs}>
         {[
           ["all", "All"],
           ["unread", "Unread"],
@@ -612,7 +641,7 @@ export function ProfilePage() {
       <Heading title="Profile & settings" />
       <div className="settings">
         <form
-          className="form"
+          className="form settings-profile"
           id="f-pf"
           key={user.id}
           onSubmit={async (event) => {
@@ -641,13 +670,13 @@ export function ProfilePage() {
           </div>
           <p className="hint">Account type · {retailer ? "Retailer" : "Individual"}</p>
           <Field id="pf-loc" label={retailer ? "Store area" : "Preferred area"}>
-            <select defaultValue={user.loc} id="pf-loc" name="loc">
+            <Select defaultValue={user.loc} id="pf-loc" name="loc">
               {LOCATIONS.map((area) => (
                 <option key={area.id} value={area.id}>
                   {area.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           {retailer && (
             <>
@@ -668,119 +697,115 @@ export function ProfilePage() {
             </Button>
           </div>
         </form>
-        <div>
-          <section className="form">
-            <h2>Notifications</h2>
-            <p className="mute sm">
-              No push, SMS or email is sent. Device alerts require browser permission.
-            </p>
-            <DeviceAlerts key={user.id} />
-            {preferenceLabels
-              .filter(([key]) => key !== "stock" || retailer)
-              .map(([key, text]) => (
-                <label className="toggle" key={key}>
-                  <span>
-                    <b>{text}</b>
-                  </span>
-                  <input
-                    type="checkbox"
-                    data-pref={key}
-                    checked={user.prefs[key]}
-                    onChange={async (event) => {
-                      const result = await run("preferences", { [key]: event.target.checked });
-                      if (!result.ok) notify(result.error.message);
-                    }}
-                  />
-                  <i />
-                </label>
-              ))}
-          </section>
-          <section className="form mt-4">
-            <h2>Account</h2>
-            {mode === "demo" && (
-              <Note danger>
-                Your demo password is stored as plain text in this browser. Use a test password
-                only.
-              </Note>
-            )}
-            <Disclosure title="Change password" forceOpen={!!passError} className="flat">
-              <form
-                id="f-pw"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  const form = event.currentTarget,
-                    values = new FormData(form);
-                  const result = await run("changePassword", {
-                    current: String(values.get("cur") || ""),
-                    password: String(values.get("npw") || ""),
-                  });
-                  if (result.ok) {
-                    setPassError("");
-                    form.reset();
-                    notify("Password changed");
-                  } else setPassError(result.error.message);
-                }}
-              >
-                {field("pf-cur", "cur", "Current password", "", "password")}
-                {field("pf-npw", "npw", "New password", "", "password")}
-                {passError && (
-                  <p className="hot" role="alert">
-                    {passError}
-                  </p>
-                )}
-                <Button className="btn sec" type="submit">
-                  Change password
-                </Button>
-              </form>
-            </Disclosure>
-            <div className="wnav">
-              <span />
-              <Button
-                className="btn danger"
-                act="logout"
-                onClick={async () => {
-                  if ((await run("logout", undefined)).ok) navigate("/login");
-                }}
-              >
-                Log out
-              </Button>
-            </div>
-            <p className="mute sm">
-              <Link className="link" to="/about">
-                About FreshSave
-              </Link>
-              {mode === "demo" && (
-                <>
-                  {" "}
-                  ·{" "}
-                  <Button
-                    className="link"
-                    act="resetdemo"
-                    onClick={() =>
-                      dialog(
-                        <Confirm
-                          title="Reset demo data?"
-                          action="Reset"
-                          danger
-                          submit={async () => {
-                            const result = await run("resetDemo", undefined);
-                            if (result.ok) navigate("/login");
-                            return result;
-                          }}
-                        >
-                          This restores the original sample records in this browser and logs you
-                          out.
-                        </Confirm>,
-                      )
-                    }
-                  >
-                    Reset demo data
-                  </Button>
-                </>
+        <section className="form settings-notifications">
+          <h2>Notifications</h2>
+          <p className="mute sm">
+            No push, SMS or email is sent. Device alerts require browser permission.
+          </p>
+          <DeviceAlerts key={user.id} />
+          {preferenceLabels
+            .filter(([key]) => key !== "stock" || retailer)
+            .map(([key, text]) => (
+              <label className="toggle" key={key}>
+                <span>
+                  <b>{text}</b>
+                </span>
+                <input
+                  type="checkbox"
+                  data-pref={key}
+                  checked={user.prefs[key]}
+                  onChange={async (event) => {
+                    const result = await run("preferences", { [key]: event.target.checked });
+                    if (!result.ok) notify(result.error.message);
+                  }}
+                />
+                <i />
+              </label>
+            ))}
+        </section>
+        <section className="form settings-account">
+          <h2>Account</h2>
+          {mode === "demo" && (
+            <Note danger>
+              Your demo password is stored as plain text in this browser. Use a test password only.
+            </Note>
+          )}
+          <Disclosure title="Change password" forceOpen={!!passError} className="flat">
+            <form
+              id="f-pw"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget,
+                  values = new FormData(form);
+                const result = await run("changePassword", {
+                  current: String(values.get("cur") || ""),
+                  password: String(values.get("npw") || ""),
+                });
+                if (result.ok) {
+                  setPassError("");
+                  form.reset();
+                  notify("Password changed");
+                } else setPassError(result.error.message);
+              }}
+            >
+              {field("pf-cur", "cur", "Current password", "", "password")}
+              {field("pf-npw", "npw", "New password", "", "password")}
+              {passError && (
+                <p className="hot" role="alert">
+                  {passError}
+                </p>
               )}
-            </p>
-          </section>
-        </div>
+              <Button className="btn sec" type="submit">
+                Change password
+              </Button>
+            </form>
+          </Disclosure>
+          <div className="wnav">
+            <span />
+            <Button
+              className="btn danger"
+              act="logout"
+              onClick={async () => {
+                if ((await run("logout", undefined)).ok) navigate("/login");
+              }}
+            >
+              Log out
+            </Button>
+          </div>
+          <p className="mute sm">
+            <Link className="link" to="/about">
+              Help & food rules
+            </Link>
+            {mode === "demo" && (
+              <>
+                {" "}
+                ·{" "}
+                <Button
+                  className="link"
+                  act="resetdemo"
+                  onClick={() =>
+                    dialog(
+                      <Confirm
+                        title="Reset demo data?"
+                        action="Reset"
+                        danger
+                        submit={async () => {
+                          const result = await run("resetDemo", undefined);
+                          if (result.ok) navigate("/login");
+                          return result;
+                        }}
+                      >
+                        This restores the original sample records in this browser and logs you out.
+                      </Confirm>,
+                    )
+                  }
+                >
+                  Reset demo data
+                </Button>
+              </>
+            )}
+          </p>
+        </section>
       </div>
     </>
   );

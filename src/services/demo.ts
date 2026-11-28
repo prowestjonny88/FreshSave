@@ -597,6 +597,11 @@ export function createDemoServices(): Services {
       for (const notice of state().notifs)
         if (notice.user === actor().id && (!id || notice.id === id)) notice.unread = false;
     },
+    clearReadNotifications: () => {
+      const owner = actor().id;
+      for (const notice of state().notifs)
+        if (notice.user === owner && !notice.unread) notice.cleared = true;
+    },
     openThread: ({ sellerId, listingId }) => {
       const key = `${actor().id}:${sellerId}`,
         threads = state().threads;
@@ -646,7 +651,7 @@ export function createDemoServices(): Services {
             pin:
               r.status === "confirmed" && (r.buyerId === user.id || r.sample) ? r.pin : undefined,
           })),
-        notifs: data.notifs.filter((record) => record.user === user.id),
+        notifs: data.notifs.filter((record) => record.user === user.id && !record.cleared),
         collectedFood:
           query.page === "reservation" && query.id
             ? data.inventory.find(

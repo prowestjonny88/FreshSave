@@ -89,6 +89,7 @@ function Header() {
   }, [pop]);
   const { user, store } = data.session!;
   const retailer = user.role === "retailer";
+  const addingFood = /^\/(inventory|scan|barcode)(\/|$)/.test(location.pathname);
   const market = /^\/(market|item|seller)(\/|$)/.test(location.pathname),
     marketHome = location.pathname === "/market";
   const nav = retailer
@@ -198,15 +199,17 @@ function Header() {
             {items(false)}
           </nav>
           <div className="top-acts">
-            <Link
-              className="btn sec sell-btn"
-              id="cta"
-              aria-label={retailer ? "Add stock" : "Add food"}
-              to="/scan"
-            >
-              <Glyph name="camera" />
-              <span>{retailer ? "Add stock" : "Add food"}</span>
-            </Link>
+            {(retailer || !addingFood) && (
+              <Link
+                className="btn sec sell-btn"
+                id="cta"
+                aria-label={retailer ? "Add stock" : "Add food"}
+                to="/scan"
+              >
+                <Glyph name="camera" />
+                <span>{retailer ? "Add stock" : "Add food"}</span>
+              </Link>
+            )}
             {mode === "demo" && (
               <Button
                 className="hbtn"
@@ -286,15 +289,14 @@ function Header() {
                     <small className="mute">{user.email}</small>
                   </div>
                   {link("/profile", "Profile & settings")}
-                  {link("/notifications", "Notifications")}
-                  {link("/impact", "Your activity")}
                   {retailer && (
                     <>
+                      {link("/impact", "Your activity")}
                       {link("/market", "View marketplace")}
                       {link("/basket", "Clearance Basket")}
+                      {link("/about", "About FreshSave")}
                     </>
                   )}
-                  {link("/about", "About FreshSave")}
                   <Button
                     className="pi sep"
                     act="logout"

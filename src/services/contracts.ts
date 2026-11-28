@@ -27,11 +27,13 @@ export interface ViewQuery {
 export interface ViewData {
   session: Session | null;
   inventory: InventoryItem[];
+  inventoryTotal?: number;
   batches: Batch[];
   listings: Listing[];
   stores: Record<string, Store>;
   reservations: Reservation[];
   notifs: Notification[];
+  notificationCounts?: { read: number; unread: number } | null;
   activity: Activity[];
   catalogue: CatalogueItem[];
   recent: string[];
@@ -115,6 +117,7 @@ export interface Commands {
   }>;
   disputeReservation: Command<{ id: string }>;
   readNotification: Command<{ id?: string }>;
+  clearReadNotifications: Command<undefined>;
   openThread: Command<{ sellerId: string; listingId?: string }>;
   sendMessage: Command<{ sellerId: string; text: string }>;
 }

@@ -199,6 +199,7 @@ export interface Notification {
   text: string;
   sub: string;
   unread: boolean;
+  cleared?: boolean;
   at: number;
   href: string;
 }

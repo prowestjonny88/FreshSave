@@ -1,3 +1,4 @@
+import { Select } from "./select.tsx";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import type { Reservation } from "../domain/model.ts";
@@ -200,11 +201,11 @@ function Cancellation({ r, seller }: { r: Reservation; seller: boolean }) {
       <p>{units(r.qty)} will be released back to the listing.</p>
       {seller && (
         <Field label="Reason (shown to the buyer)" id="cx-reason">
-          <select id="cx-reason" value={reason} onChange={(event) => setReason(event.target.value)}>
+          <Select id="cx-reason" value={reason} onChange={(event) => setReason(event.target.value)}>
             <option>Stock is no longer available</option>
             <option>Item found damaged</option>
             <option>Other</option>
-          </select>
+          </Select>
         </Field>
       )}
     </Confirm>
@@ -438,7 +439,7 @@ export function ReservationList() {
   return (
     <>
       <Heading
-        group="Rescue"
+        group={seller ? "Rescue" : undefined}
         title={seller ? "Reservations & handovers" : "My reservations"}
         sub={
           seller

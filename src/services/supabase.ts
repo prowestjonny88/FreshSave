@@ -122,8 +122,6 @@ export async function createSupabaseServices(url: string, key: string): Promise<
         min: query.params?.get("min"),
         max: query.params?.get("max"),
         expiry: query.params?.get("expiry"),
-        collect: query.params?.get("collect"),
-        dateType: query.params?.get("dateType"),
         sort: query.params?.get("sort"),
         offset: Math.min(100_000, Math.max(0, Math.trunc(query.offset || 0))),
         area,
@@ -331,6 +329,11 @@ export async function createSupabaseServices(url: string, key: string): Promise<
         case "clearSearch":
           recent = [];
           return undefined;
+        case "clearReadNotifications": {
+          const { error } = await client.rpc("freshsave_clear_read_notifications");
+          if (error) throw error;
+          return undefined;
+        }
         case "findBarcode": {
           const { barcode } = input as Commands["findBarcode"]["input"];
           const { data, error } = await client

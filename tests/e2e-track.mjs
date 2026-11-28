@@ -2,27 +2,21 @@ import { session, ok, eq, done } from './e2e-lib.mjs'
 const b = await session()
 console.log('Track, timers and account flows')
 await b.login('aisyah@freshsave.my')
-const counts = async () => b.eval(`return Object.fromEntries([...document.querySelectorAll('.tabs .tab, .chips .chip')].map(t=>[t.getAttribute('href').split('=')[1], t.querySelector('i') ? +t.querySelector('i').textContent : +t.textContent.trim().match(/(\\d+)$/)[1]]))`)
+const counts = async () => b.eval(`return Object.fromEntries([...document.querySelectorAll('.tabs .tab')].map(t => [t.getAttribute('href').split('=')[1], +t.querySelector('i').textContent]))`)
 await b.hash('#/inventory'); let c = await counts()
 eq(Object.keys(c), ['active', 'd7', 'expired', 'history'], 'My food has four simple tabs (All, Use soon, Past date, Used & discarded)')
-await b.hash('#/inventory?st=d7'); const c7 = await counts()
+await b.hash('#/inventory?st=d7')
+await b.click('.tbar summary')
+const dueCounts = await b.eval(`return Object.fromEntries([...document.querySelectorAll('.tbar option[value^=d]')].filter(o => /^d[137]$/.test(o.value)).map(o => [o.value, +o.textContent.trim().match(/\\((\\d+)\\)$/)[1]]))`)
+const c7 = { ...await counts(), ...dueCounts }
 ok(c7.d1 <= c7.d3 && c7.d3 <= c7.d7, `expiry filters are cumulative (d1=${c7.d1} <= d3=${c7.d3} <= d7=${c7.d7})`)
 eq([c7.d1, c7.d3, c7.d7, c7.expired, c7.active], [2, 3, 4, 1, 8], 'counts match the seed (item due tomorrow appears under Use soon within 7 days)')
-const t7 = await b.text('#main'); ok(t7.includes('Dutch Lady Full Cream Milk') && t7.includes('Strawberries') && t7.includes('everything due sooner'), 'Use soon includes items due today/tomorrow and says so')
+const t7 = await b.text('#main'); ok(t7.includes('Dutch Lady Full Cream Milk') && t7.includes('Strawberries') && t7.includes('Today or tomorrow'), 'Use soon includes items due today or tomorrow and shows the date filter')
 ok(!t7.includes('Past its') , 'past-date items are not in "Within 7 days"')
 await b.hash('#/dashboard')
 ok(!(await b.text('#main')).includes('Marigold Natural Yoghurt'), 'Today leaves past-date food out of Use soon')
 await b.hash('#/inventory?st=expired')
-ok(await b.has('.acts-cell > [data-id=i4][data-s=discarded]') && await b.has('.more [data-id=i4][data-s=consumed]'), 'past use-by food offers Discard first and keeps Mark as used in More actions')
-await b.eval(`document.querySelector('.more [data-id=i4]').closest('details').querySelector('summary').click()`)
-ok(await b.eval(`
-  const menu = document.querySelector('.more[open] .more-m');
-  const actions = [...menu.querySelectorAll('button')];
-  return actions.length >= 3 && actions.every(action => {
-    const { backgroundColor, textAlign } = getComputedStyle(action);
-    return !action.classList.contains('btn') && backgroundColor === 'rgba(0, 0, 0, 0)' && textAlign === 'left';
-  });
-`), 'inventory overflow actions are neutral, left-aligned menu rows')
+ok(await b.has('.acts-cell > [data-id=i4][data-s=discarded].discard-priority') && await b.has('.acts-cell > [data-id=i4][data-s=consumed]:not(.go)'), 'past use-by food emphasizes Discard and keeps Used available')
 // partial consumption + undo
 await b.hash('#/inventory'); const rowBtn = (id, s) => `[data-act=invdone][data-id=${id}][data-s=${s}]`
 await b.click(rowBtn('i1', 'consumed')); ok((await b.modal()).includes('How many used'), 'multi-unit item asks how many were used')
@@ -49,7 +43,7 @@ eq(await b.eval(`return document.querySelector('#res-expiry').value`), '', 'uncl
 ok((await b.text('#main')).includes('Suggested'), 'suggestion shown separately'); ok(!/\d+% confidence|Confidence \d+/i.test(await b.text('#main')), 'no invented confidence percentage')
 await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(200); ok((await b.text('#main')).includes('Enter the date printed'), 'cannot save without a date')
 await b.act('usesuggest'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(200); ok((await b.text('#main')).includes('Tick the box'), 'a suggested date still requires explicit confirmation')
-await b.eval(`document.querySelector('[data-b="res.expiryType"][value="use-by"]').click()`); await b.check('[data-b="res.ok"]'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(500)
+await b.type('[data-b="res.expiryType"]', 'use-by'); await b.check('[data-b="res.ok"]'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(500)
 st = await b.state(); const scanNow = await b.eval('return Date.now()'); const sc = st.inventory.find((i) => i.name.includes('Gardenia') && i.addedAt > scanNow - 15000); ok(sc && sc.expiryType === 'use-by' && sc.initial === 1, 'scan result saved with chosen date type')
 // failed read
 await b.hash('#/scan'); await b.act('scan-sample', '[data-id="milo"]')
@@ -60,7 +54,7 @@ ok(await b.eval(`const field=document.querySelector('#bc-code'); return field.va
 await b.act('bcsample', '[data-c="9556041610018"]'); ok((await b.text('#main')).includes('Dutch Lady Full Cream Milk 1L') && (await b.text('#main')).includes('sample catalogue'), 'valid barcode found in demo catalogue')
 ok(!(await b.has('#bc-code-error, #bc-code[aria-invalid]')), 'valid barcode clears the inline error')
 await b.act('bcuse'); await b.sleep(300); eq(await b.eval('return location.hash'), '#/scan/result', 'barcode flows to the date confirmation page')
-await b.click('[data-b="res.expiryType"][value="best-before"]')
+await b.type('[data-b="res.expiryType"]', 'best-before')
 await b.type('#res-expiry', '2026-12-12')
 await b.check('[data-b="res.ok"]')
 await b.eval(`
@@ -72,17 +66,17 @@ await b.eval(`
 `)
 await b.sleep(200)
 ok((await b.text('.scan-review')).includes('Try another photo'), 'unreadable replacement offers an explicit retry')
-ok(await b.eval(`return !document.querySelector('#res-expiry').value && !document.querySelector('[data-b="res.expiryType"]:checked') && !document.querySelector('[data-b="res.ok"]').checked`), 'unreadable replacement clears the previous date, date type and confirmation')
+ok(await b.eval(`return !document.querySelector('#res-expiry').value && !document.querySelector('[data-b="res.expiryType"]').value && !document.querySelector('[data-b="res.ok"]').checked`), 'unreadable replacement clears the previous date, date type and confirmation')
 await b.eval(`document.querySelector('#f-res').requestSubmit()`)
 await b.sleep(200)
 eq(await b.eval('return location.hash'), '#/scan/result', 'cannot save using the previous verification after replacing a label')
 // manual add: date requires confirmation; past date warns
-await b.hash('#/inventory'); await b.act('addmanual'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(250)
+await b.hash('#/inventory'); await b.click('#main a[href="#/scan"]'); await b.act('addmanual'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(250)
 ok(await b.eval(`const field = document.querySelector('#man-name'); return document.activeElement === field && field.getAttribute('aria-invalid') === 'true' && document.getElementById(field.getAttribute('aria-describedby'))?.textContent.includes('Enter the product name')`), 'invalid manual entry focuses the field and associates its error')
 await b.type('#man-name', 'Test Biscuits'); await b.type('#man-cat', 'pantry'); await b.type('#man-expiry', '2020-01-01')
 await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200)
-ok((await b.modal()).includes('Choose the date type printed on the pack') && !(await b.has('input[name="man-et"]:checked')), 'new manual entry requires a deliberate date type')
-await b.click('[data-b="man.expiryType"][value="best-before"]')
+ok((await b.modal()).includes('Choose the date type printed on the pack') && !(await b.eval(`return document.querySelector('[data-b="man.expiryType"]').value`)), 'new manual entry requires a deliberate date type')
+await b.type('[data-b="man.expiryType"]', 'best-before')
 ok(!(await b.eval(`return document.querySelector('#man-past').hidden`)), 'past date shows an inline notice'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(200); ok((await b.modal()).includes('Tick the box'), 'manual entry requires date confirmation')
 ok(await b.eval(`const m=document.querySelector('#modal'); return m.contains(document.activeElement)`), 'focus is inside the dialog')
 await b.eval(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`); await b.sleep(150); ok(!(await b.modalOpen()), 'Escape closes the dialog')
@@ -127,6 +121,18 @@ st = await b.state(); eq(st.reservations.find((x) => x.id === rid).reason, 'no-r
 const pg = await b.text('#main'); ok(pg.includes('Seller did not respond in time') && pg.includes('Not collected before the deadline'), 'closed tab explains each reason')
 await b.hash('#/item/l4'); ok((await b.text('#main')).includes('15 unit'), 'released units are available again (15 of 15)')
 ok((await b.state()).notifs.some((n) => n.user === 'u1' && /expired/i.test(n.text)), 'buyer notified of expiry')
+await b.hash('#/notifications')
+const unreadBefore = (await b.state()).notifs.filter(n => n.user === 'u1' && n.unread).map(n => n.id)
+eq(await b.text('#main [data-act=clearread]'), 'Clear read notifications', 'read alerts have an explicit clear action')
+await b.act('clearread')
+eq((await b.state()).notifs.filter(n => n.user === 'u1' && n.unread).map(n => n.id), unreadBefore, 'Clear read keeps unread notifications')
+ok(!(await b.has('#main [data-act=clearread]')) && await b.has('#main [data-act=readall]'), 'only Mark all as read appears when every alert is unread')
+await b.act('readall')
+ok(!(await b.has('#main [data-act=readall]')) && await b.has('#main [data-act=clearread]'), 'only Clear read notifications appears when every alert is read')
+await b.act('clearread')
+await b.reload()
+ok(!(await b.has('.nlist li')) && (await b.text('#main')).includes('Nothing in this view'), 'cleared notifications stay dismissed across reload and reminder sync')
+ok(!(await b.has('#main [data-act=readall], #main [data-act=clearread]')), 'empty notifications show no bulk actions')
 
 // auth + onboarding + role boundaries
 await b.logout()

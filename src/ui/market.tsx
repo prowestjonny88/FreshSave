@@ -1,8 +1,10 @@
+import { Select, SlidingLabel } from "./select.tsx";
+import { AreaSearch } from "./area-search.tsx";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { CATEGORIES, catLabel, LOCATIONS, RESCUE_CATS } from "../data.js";
 import { listingLedger } from "../domain/model.ts";
-import { areaOf, browse, distanceTo, listingStatus, needsToday } from "../domain/selectors.ts";
+import { areaOf, browse, distanceTo, listingStatus } from "../domain/selectors.ts";
 import { daysUntil, POLICY } from "../domain/time.ts";
 import {
   Avatar,
@@ -26,15 +28,57 @@ import { useUI } from "./state.tsx";
 import type { ViewData } from "../services/contracts.ts";
 
 export function MarketSearch() {
-  const { data, mode, read, run, distance, setDistance, dialog } = useUI();
+  const { data, mode, read, run, distance, setDistance, dialog, notify } = useUI();
   const [text, setText] = useState(""),
     [open, setOpen] = useState(false);
   const [matches, setMatches] = useState<ViewData>();
   const searchBox = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const locationRequest = useRef(0);
+  const [locating, setLocating] = useState(false);
   const navigate = useNavigate(),
     location = useLocation();
   const query = new URLSearchParams(location.search).get("q") || "";
+  useEffect(
+    () => () => {
+      locationRequest.current++;
+    },
+    [],
+  );
+  function useMyLocation() {
+    const fallback = () => notify("Couldn’t access your location. Choose your area manually.");
+    if (!navigator.geolocation) {
+      fallback();
+      return;
+    }
+    const request = ++locationRequest.current;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        if (request !== locationRequest.current) return;
+        const distance = (area: (typeof LOCATIONS)[number]) =>
+          Math.hypot(
+            area.ll[0] - coords.latitude,
+            (area.ll[1] - coords.longitude) * Math.cos((coords.latitude * Math.PI) / 180),
+          );
+        const closest = LOCATIONS.reduce((a, b) => (distance(a) <= distance(b) ? a : b));
+        const result = await run("area", { id: closest.id });
+        if (request !== locationRequest.current) return;
+        setLocating(false);
+        notify(result.ok ? `Showing food near ${closest.short}` : result.error.message);
+      },
+      () => {
+        if (request !== locationRequest.current) return;
+        setLocating(false);
+        fallback();
+      },
+      { timeout: 8000, maximumAge: 600000 },
+    );
+  }
+  function cancelLocationRequest() {
+    locationRequest.current++;
+    setLocating(false);
+  }
   useEffect(() => setText(query), [query]);
   useEffect(() => {
     setOpen(false);
@@ -170,13 +214,30 @@ export function MarketSearch() {
           </div>
         </div>
         <div className="locgrp">
-          <Button className="hbtn locbtn" act="loc" onClick={() => dialog(<AreaPicker />)}>
+          <AreaSearch inline onBegin={cancelLocationRequest} />
+          <Button
+            className="hbtn locbtn locbtn-mobile"
+            act="loc"
+            onClick={(event) => {
+              event.currentTarget.focus();
+              cancelLocationRequest();
+              dialog(<AreaPicker />);
+            }}
+          >
             <span className="lt">
               <small>Your area</small>
-              <span id="locName">{areaOf(data).short}</span>
+              <SlidingLabel id="locName" text={areaOf(data).short} />
             </span>
           </Button>
-          <select
+          <Button
+            className="hbtn locate-btn"
+            act="use-location"
+            disabled={locating}
+            onClick={useMyLocation}
+          >
+            {locating ? "Locating…" : "Use my location"}
+          </Button>
+          <Select
             className="sel distsel"
             id="hdr-dist"
             aria-label="Approximate distance"
@@ -190,7 +251,7 @@ export function MarketSearch() {
                 {value === "all" ? "Show all" : `Within ~${value} km`}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
     </div>
@@ -198,50 +259,12 @@ export function MarketSearch() {
 }
 
 function AreaPicker() {
-  const { data, run, close, notify } = useUI();
-  const currentArea = areaOf(data).id;
-  const setArea = async (id: string) => {
-    const result = await run("area", { id });
-    if (result.ok) close();
-    else notify(result.error.message);
-  };
+  const { close } = useUI();
   return (
     <>
       <h3 id="m-title">Choose your area</h3>
-      <p className="mute">Distances are estimates between sample neighbourhoods.</p>
-      {navigator.geolocation && (
-        <Button
-          className="btn sec block"
-          onClick={() => {
-            navigator.geolocation.getCurrentPosition(
-              ({ coords }) => {
-                const byDistance = (loc: (typeof LOCATIONS)[number]) =>
-                  Math.hypot(loc.ll[0] - coords.latitude, loc.ll[1] - coords.longitude);
-                const closest = [...LOCATIONS].sort((a, b) => byDistance(a) - byDistance(b))[0];
-                void setArea(closest.id);
-              },
-              () => notify("Couldn’t access your location. Choose an area."),
-              { timeout: 8000, maximumAge: 600000 },
-            );
-          }}
-        >
-          Find the nearest area to me
-        </Button>
-      )}
-      <div className="loclist">
-        {LOCATIONS.map((area) => (
-          <Button
-            key={area.id}
-            className="area-option"
-            act="setloc"
-            data-id={area.id}
-            aria-current={area.id === currentArea || undefined}
-            onClick={() => setArea(area.id)}
-          >
-            {area.name}
-          </Button>
-        ))}
-      </div>
+      <p className="mute">Distances are approximate and based on your selected neighbourhood.</p>
+      <AreaSearch onSelected={close} />
       <div className="macts">
         <Button className="btn sec" onClick={close}>
           Close
@@ -267,8 +290,6 @@ export function Market() {
   const min = params.get("min") || "",
     max = params.get("max") || "",
     expiry = params.get("expiry") || "all";
-  const dateType = params.get("dateType") || "all",
-    collect = params.get("collect") || "all";
   const category = params.get("cat"),
     search = params.get("q") || "",
     sort = params.get("sort") || "near";
@@ -280,9 +301,7 @@ export function Market() {
         (!category || l.cat === category) &&
         (!min || l.price >= +min) &&
         (!max || l.price <= +max) &&
-        (expiry === "all" || daysUntil(l.expiry, today) <= +expiry) &&
-        (dateType === "all" || l.expiryType === dateType) &&
-        (collect === "all" || daysUntil(l.pickupUntil, today) <= +collect),
+        (expiry === "all" || daysUntil(l.expiry, today) <= +expiry),
     );
   if (sort === "collect") results.sort((a, b) => listingCutoff(a) - listingCutoff(b));
   if (sort === "low") results.sort((a, b) => a.price - b.price);
@@ -301,10 +320,7 @@ export function Market() {
       ))}
     </div>
   );
-  const actions = needsToday(data),
-    first = actions[0];
-  const filtered =
-    !!category || !!min || !!max || expiry !== "all" || dateType !== "all" || collect !== "all";
+  const filtered = !!category || !!min || !!max || expiry !== "all";
   const noResults = (
     <Empty
       title="No listings match right now."
@@ -360,39 +376,15 @@ export function Market() {
           <header className="market-intro">
             <h1>Find food</h1>
           </header>
-          {first && (
-            <section className="strip-act" aria-label="Needs you today">
-              <Link className={"sa " + first.tone} to={first.to}>
-                <span className="kicker">Needs you today</span>
-                <b>{first.title}</b>
-                <small>{first.detail}</small>
-              </Link>
-              {actions.length > 1 && (
-                <Link className="link sm" to="/dashboard">
-                  +{actions.length - 1} more on Today
-                </Link>
-              )}
-            </section>
-          )}
           <section className="market-offers" aria-labelledby="nearby-heading">
             <div className="sec-h">
               <div>
                 <h2 id="nearby-heading">Near {areaOf(data).short}</h2>
                 <p>Nearest first · distances are approximate</p>
               </div>
-              <span className="sec-links">
-                <Button
-                  className="link"
-                  act="seeall"
-                  data-sort="collect"
-                  onClick={() => setParams({ browse: "1", sort: "collect" })}
-                >
-                  Collect soonest first
-                </Button>
-                <Button className="link" act="seeall" onClick={() => setParams({ browse: "1" })}>
-                  See all {nearby.length} listings →
-                </Button>
-              </span>
+              <Button className="link" act="seeall" onClick={() => setParams({ browse: "1" })}>
+                Browse all
+              </Button>
             </div>
             {nearby.length ? cards(nearby.slice(0, 8)) : noResults}
           </section>
@@ -455,92 +447,66 @@ export function Market() {
               Close
             </Button>
           </div>
-          <div className="fgrp">
-            <h4>Collect by</h4>
-            {[
-              ["0", "Today"],
-              ["2", "Within 2 days"],
-              ["all", "Any time"],
-            ].map(([value, label]) => (
-              <label key={value} className="rad">
+          <div className="fgrp filter-fields">
+            <label className="filter-date">
+              Date on pack{" "}
+              <Select
+                data-f="expiry"
+                value={expiry}
+                onChange={(event) => update("expiry", event.target.value)}
+              >
+                <option value="all">Any date</option>
+                <option value="3">Within 3 days</option>
+                <option value="7">Within 7 days</option>
+              </Select>
+            </label>
+            <div className="pricefields">
+              <label>
+                <span>Min (RM)</span>
                 <input
-                  type="radio"
-                  name="collect"
-                  checked={collect === value}
-                  onChange={() => update("collect", value)}
+                  type="number"
+                  min={0}
+                  data-f="min"
+                  value={min}
+                  onChange={(event) => update("min", event.target.value)}
                 />
-                {label}
               </label>
-            ))}
-          </div>
-          <div className="fgrp filter-advanced">
-            <Disclosure title="Date and price" className="flat">
-              <label className="rad">
-                Date type{" "}
-                <select
-                  value={dateType}
-                  onChange={(event) => update("dateType", event.target.value)}
+              <label>
+                <span>Max (RM)</span>
+                <input
+                  type="number"
+                  min={0}
+                  data-f="max"
+                  value={max}
+                  onChange={(event) => update("max", event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="pills">
+              {[
+                ["", "5", "Up to RM5"],
+                ["5", "10", "RM5–RM10"],
+                ["10", "20", "RM10–RM20"],
+                ["20", "", "RM20+"],
+              ].map(([low, high, label]) => (
+                <Button
+                  className={"pill" + (low === min && high === max ? " on" : "")}
+                  key={label}
+                  aria-pressed={low === min && high === max}
+                  onClick={() => {
+                    const next = new URLSearchParams(params);
+                    next.delete("offset");
+                    if (low && (min !== low || max !== high)) next.set("min", low);
+                    else next.delete("min");
+                    if (high && (min !== low || max !== high)) next.set("max", high);
+                    else next.delete("max");
+                    setParams(next);
+                  }}
                 >
-                  <option value="all">Any</option>
-                  <option value="best-before">Best before</option>
-                  <option value="use-by">Use by</option>
-                </select>
-              </label>
-              <label className="rad">
-                Date on pack{" "}
-                <select value={expiry} onChange={(event) => update("expiry", event.target.value)}>
-                  <option value="all">Any</option>
-                  <option value="3">Within 3 days</option>
-                  <option value="7">Within 7 days</option>
-                </select>
-              </label>
-              <div className="pricefields">
-                <label>
-                  <span>Min (RM)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    data-f="min"
-                    value={min}
-                    onChange={(event) => update("min", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Max (RM)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    data-f="max"
-                    value={max}
-                    onChange={(event) => update("max", event.target.value)}
-                  />
-                </label>
-              </div>
-              <div className="pills">
-                {[
-                  ["", "5", "Up to RM5"],
-                  ["5", "10", "RM5–RM10"],
-                  ["10", "20", "RM10–RM20"],
-                  ["20", "", "RM20+"],
-                ].map(([low, high, label]) => (
-                  <Button
-                    className={"pill" + (low === min && high === max ? " on" : "")}
-                    key={label}
-                    onClick={() => {
-                      const next = new URLSearchParams(params);
-                      next.delete("offset");
-                      if (low && (min !== low || max !== high)) next.set("min", low);
-                      else next.delete("min");
-                      if (high && (min !== low || max !== high)) next.set("max", high);
-                      else next.delete("max");
-                      setParams(next);
-                    }}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </Disclosure>
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
           <div className="fgrp mobile-only filter-actions">
             <Button className="btn block" onClick={() => filterDrawer.current?.close()}>
@@ -568,7 +534,7 @@ export function Market() {
             <label className="mute sm" htmlFor="sort">
               Sort by
             </label>
-            <select
+            <Select
               className="sel"
               id="sort"
               value={sort}
@@ -586,7 +552,7 @@ export function Market() {
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="tags">
             {search && <span className="tag">“{search}”</span>}

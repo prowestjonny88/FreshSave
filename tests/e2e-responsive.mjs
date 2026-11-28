@@ -69,7 +69,7 @@ for (const role of ['individual', 'retailer']) {
           return bounds.top >= 0 && bounds.bottom <= navTop;
         });`)
       ok(market, 'phone market shows the first offer name and price above the bottom navigation')
-      ok(await b.eval(`return [...document.querySelectorAll('#home .card .dtype')].every(label => label.scrollWidth <= label.clientWidth + 1)`), 'phone cards show the full printed date type')
+      ok(!(await b.has('#home .card .card-printed-date, #home .card .card-pickup')), 'phone cards leave the full dates and cutoff to the offer details')
       await b.eval(`document.querySelector('#q').focus()`)
       await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
       await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
@@ -77,7 +77,9 @@ for (const role of ['individual', 'retailer']) {
       await b.hash('#/item/l1')
       ok(await b.eval(`
         const top = selector => document.querySelector(selector).getBoundingClientRect().top;
-        return top('.product-heading') < top('.pickup-facts') && top('.pickup-facts') < top('[data-act=reserve]')
+        const reserve = document.querySelector('[data-act=reserve]');
+        return getComputedStyle(reserve).textAlign === 'center'
+          && top('.product-heading') < top('.pickup-facts') && top('.pickup-facts') < top('[data-act=reserve]')
           && top('[data-act=reserve]') < top('.product-gallery');`), 'phone shows pickup facts and Reserve before the gallery')
     }
     if (role === 'individual' && w <= 390) {
@@ -107,6 +109,12 @@ for (const role of ['individual', 'retailer']) {
       await b.send('Emulation.setFocusEmulationEnabled', { enabled: true })
       await b.click('.filter-toggle')
       ok(await b.eval(`const drawer = document.querySelector('#filters'); return drawer.matches(':modal') && drawer.contains(document.activeElement)`), `@${w}px: opening filters moves focus into a modal`)
+      ok(await b.eval(`
+        const drawer = document.querySelector('#filters');
+        return !drawer.querySelector('details, [name="collect"]') &&
+          [...drawer.querySelectorAll('[data-f]')].length === 3 &&
+          [...drawer.querySelectorAll('[data-f]')].every(field => field.checkVisibility());
+      `), `@${w}px: date and price fields are visible as soon as filters open`)
       await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
       await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
       ok(await b.eval(`return document.querySelector('#filters').contains(document.activeElement)`), `@${w}px: Tab stays in filters`)
@@ -114,6 +122,12 @@ for (const role of ['individual', 'retailer']) {
       await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
       await b.sleep(150)
       ok(await b.eval(`return !document.querySelector('#filters').open && document.activeElement.matches('.filter-toggle')`), `@${w}px: Escape closes filters and restores focus`)
+      await b.act('loc')
+      ok(await b.eval(`return document.activeElement.matches('#modal input[role=combobox]')`), `@${w}px: tapping the current area focuses the city search`)
+      await b.type('#modal input[role=combobox]', 'cher')
+      eq(await b.eval(`return [...document.querySelectorAll('#modal [role=option]')].map(option => option.textContent)`), ['Cheras, Kuala Lumpur'], `@${w}px: typing filters available neighbourhoods`)
+      await b.act('setloc', '[data-id=cheras]')
+      ok(await b.eval(`return !document.querySelector('#ov').classList.contains('open') && document.activeElement.matches('.locbtn-mobile') && document.querySelector('#locName').textContent === 'Cheras'`), `@${w}px: selecting an area updates the header and restores focus`)
     }
     ok(b.errors.length === 0, `${role} @${w}px: no JS errors` + (b.errors.length ? ' ' + b.errors[0] : ''))
     await b.close()

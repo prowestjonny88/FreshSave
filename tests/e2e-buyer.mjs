@@ -3,12 +3,40 @@ const b = await session()
 await b.login('aisyah@freshsave.my')
 console.log('Buyer journey (Aisyah, individual)')
 eq(await b.eval('return location.hash'), '#/market', 'individual lands on Find food')
-ok(/needs you today/i.test(await b.text('.strip-act')), 'slim action strip on marketplace home shows the most urgent task')
+ok(!(await b.has('.strip-act, .card-printed-date, .card-pickup')), 'marketplace keeps task and detailed date rows off the offer cards')
+await b.hash('#/dashboard')
+ok((await b.text('#main')).includes('Pickup deadline:'), 'the pickup task and its deadline remain on Today')
+await b.hash('#/market')
+await b.eval(`navigator.geolocation.getCurrentPosition = (success) => success({ coords: { latitude: 3.17, longitude: 101.651 } });`)
+await b.act('use-location')
+const currentArea = () => b.eval(`return document.querySelector('#market-area').value`)
+eq(await currentArea(), 'Mont Kiara', 'Use my location maps coordinates to an approximate neighbourhood')
+await b.eval(`navigator.geolocation.getCurrentPosition = (_, failure) => failure({ code: 1 });`)
+await b.act('use-location')
+ok((await b.toastText()).includes('Choose your area manually'), 'denied location points to the manual fallback')
+await b.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+await b.eval(`document.querySelector('#market-area').focus()`)
+await b.type('#market-area', 'petaling')
+eq(await b.eval(`return [...document.querySelectorAll('.area-suggestions [role=option]')].map(o=>o.textContent)`), ['SS2, Petaling Jaya'], 'city text finds the supported neighbourhood')
+for (const [key, code] of [['ArrowDown', 40], ['Enter', 13]]) {
+  await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key, windowsVirtualKeyCode: code })
+  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key, windowsVirtualKeyCode: code })
+}
+await b.sleep(200)
+eq(await currentArea(), 'SS2, PJ', 'keyboard selection updates the current area')
+await b.type('#market-area', 'penang')
+ok((await b.text('.area-suggestions')).includes('No matching areas'), 'unsupported city leaves a clear empty state')
+await b.eval(`document.querySelector('#main h1').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`)
+eq(await currentArea(), 'SS2, PJ', 'closing the search restores the selected area')
+await b.click('#market-area')
+await b.type('#market-area', 'KL')
+ok(await b.has('[data-act=setloc][data-id=bangsar]') && await b.has('[data-act=setloc][data-id=damansara]') && !(await b.has('[data-act=setloc][data-id=ss2]')), 'KL matches Kuala Lumpur areas and their abbreviation')
+await b.act('setloc', '[data-id=bangsar]')
+eq(await currentArea(), 'Bangsar', 'manual selection still changes the area')
 ok(!(await b.text('body')).includes('Jaya Grocer'), 'no real chain names visible')
 eq(await b.eval(`return [...document.querySelectorAll('#nav a > span')].map(label => label.textContent)`), ['Today', 'My food', 'Find food', 'Reservations'], 'buyer nav names each destination directly')
 ok(!(await b.has('#cats [data-id=meat]')) && !(await b.has('#cats [data-id=dairy]')), 'category bar only offers pilot categories')
 
-await b.send('Emulation.setFocusEmulationEnabled', { enabled: true })
 await b.eval(`document.querySelector('#q').focus()`)
 await b.sleep(120)
 ok(await b.eval(`return document.querySelector('#sdrop').checkVisibility()`), 'focusing search opens recent searches')
@@ -89,6 +117,19 @@ ok(page.includes('excluded') && /simulated handover/.test(page), 'activity page 
 ok(!/Food Rescued|landfill|kg of food|tonnes/i.test(page) && page.includes('Not measured') && page.includes('not an estimate of food waste avoided'), 'no unsupported impact claims; limits stated')
 await b.hash('#/reservations?tab=unknown')
 ok((await b.text('#main')).includes('My reservations') && await b.has('.tabs .on'), 'unknown Reservations tab falls back to a valid view')
+await b.eval(`
+  const key = 'freshsave-app-v2';
+  const state = JSON.parse(localStorage.getItem(key));
+  const offer = state.listings.find(listing => listing.id === 'l3');
+  offer.pickupUntil = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+  offer.pickTo = '21:00';
+  localStorage.setItem(key, JSON.stringify(state));
+`)
+await b.reload()
+await b.hash('#/market?browse=1')
+const urgentCard = '#results .card[href="#/item/l3"]'
+eq(await b.text(urgentCard + ' .im .card-booking-soon'), 'Booking closes within 24 hours', 'an offer closing soon has a visible badge above its details')
+ok(await b.has('#results .card[href="#/item/l1"]') && !(await b.has('#results .card[href="#/item/l1"] .card-booking-soon')), 'an offer with a later cutoff has no urgency badge')
 console.log('JS errors:', b.errors.length ? b.errors : 'none')
 ok(b.errors.length === 0, 'no JavaScript errors during buyer journey')
 await b.close(); process.exit(done() ? 1 : 0)
