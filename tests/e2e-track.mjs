@@ -28,10 +28,13 @@ st = await b.state(); eq([st.inventory.find((i) => i.id === 'i1').qty, st.invent
 await b.hash('#/inventory'); await b.click(rowBtn('i2', 'consumed')); await b.sleep(300)
 st = await b.state(); eq(st.inventory.find((i) => i.id === 'i2').status, 'consumed', 'single-unit item closes immediately (with undo)')
 ok(!(await b.has('#modal h3') && (await b.modalOpen())), 'no dialog for a single unit')
+ok(await b.eval(`return document.activeElement.matches('.acts-cell > button') && document.activeElement.dataset.id !== 'i2'`), 'focus moves to a surviving row action')
+await b.click('.toast:last-child button'); await b.sleep(250)
+ok(await b.eval(`return document.activeElement.matches('.acts-cell > [data-id=i2]')`), 'Undo returns focus to the restored row')
 
 // scan: uncertain read must not pre-fill the date
 await b.hash('#/scan'); ok((await b.text('#main')).includes('Simulated scanning'), 'scan page says OCR is simulated up front')
-await b.eval(`document.querySelector('input[name=sample][value=bread]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
+await b.act('scan-sample', '[data-id="bread"]')
 eq(await b.eval('return location.hash'), '#/scan/result', 'reached confirm page')
 eq(await b.eval(`return document.querySelector('#res-expiry').value`), '', 'unclear reading leaves the date blank')
 ok((await b.text('#main')).includes('Suggested'), 'suggestion shown separately'); ok(!/\d+% confidence|Confidence \d+/i.test(await b.text('#main')), 'no invented confidence percentage')
@@ -40,12 +43,13 @@ await b.act('usesuggest'); await b.eval(`document.querySelector('#f-res').reques
 await b.eval(`document.querySelector('[data-b="res.expiryType"][value="use-by"]').click()`); await b.check('[data-b="res.ok"]'); await b.eval(`document.querySelector('#f-res').requestSubmit()`); await b.sleep(500)
 st = await b.state(); const scanNow = await b.eval('return Date.now()'); const sc = st.inventory.find((i) => i.name.includes('Gardenia') && i.addedAt > scanNow - 15000); ok(sc && sc.expiryType === 'use-by' && sc.initial === 1, 'scan result saved with chosen date type')
 // failed read
-await b.hash('#/scan'); await b.eval(`document.querySelector('input[name=sample][value=milo]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
+await b.hash('#/scan'); await b.act('scan-sample', '[data-id="milo"]')
 ok((await b.text('#main')).includes('no date found'), 'failed read explained'); 
 // barcode
 await b.hash('#/barcode'); await b.type('#bc-code', '9556041610016'); await b.eval(`document.querySelector('#f-bc').requestSubmit()`); await b.sleep(250)
-ok((await b.toastText()).includes('check digit') && !(await b.has('.bc-res')), 'barcode with a wrong check digit is rejected')
+ok(await b.eval(`const field=document.querySelector('#bc-code'); return field.value==='9556041610016' && field.getAttribute('aria-invalid')==='true' && document.getElementById(field.getAttribute('aria-describedby'))?.textContent.includes('check digit') && !document.querySelector('.bc-res')`), 'wrong check digit leaves an inline error linked to the field')
 await b.act('bcsample', '[data-c="9556041610018"]'); ok((await b.text('#main')).includes('Dutch Lady Full Cream Milk 1L') && (await b.text('#main')).includes('sample catalogue'), 'valid barcode found in demo catalogue')
+ok(!(await b.has('#bc-code-error, #bc-code[aria-invalid]')), 'valid barcode clears the inline error')
 await b.act('bcuse'); await b.sleep(300); eq(await b.eval('return location.hash'), '#/scan/result', 'barcode flows to the date confirmation page')
 // manual add: date requires confirmation; past date warns
 await b.hash('#/inventory'); await b.act('addmanual'); await b.eval(`document.querySelector('#f-man').requestSubmit()`); await b.sleep(250)
@@ -86,7 +90,7 @@ await b.logout()
 // keep-me-logged-in unchecked → session marker
 await b.hash('#/login'); await b.type('#a-email', 'aisyah@freshsave.my'); await b.type('#a-pw', 'demo1234'); await b.eval(`document.querySelector('input[name=keep]').checked=false`); await b.eval(`document.querySelector('#f-login').requestSubmit()`); await b.sleep(400)
 eq((await b.state()).sessionTemp, true, '"Keep me logged in" off creates a tab-only session')
-await b.logout(); await b.hash('#/forgot'); ok((await b.text('.auth-card')).includes('Demo only') && (await b.text('.auth-card')).includes('No email is sent'), 'forgot-password is labelled demo-only before submission')
+await b.logout(); await b.hash('#/forgot'); ok((await b.text('.auth-card')).includes('No email is sent') && !(await b.has('#f-forgot')) && (await b.text('.auth-alt')).includes('Back to demo accounts'), 'demo recovery explains the limit and links back to the accounts')
 await b.hash('#/about'); ok((await b.text('body')).includes('What is real, local or simulated'), 'About page reachable while logged out')
 console.log('JS errors:', b.errors.length ? b.errors : 'none'); ok(b.errors.length === 0, 'no JavaScript errors')
 await b.close(); process.exit(done() ? 1 : 0)

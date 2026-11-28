@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   Link,
   Navigate,
@@ -15,7 +15,7 @@ import type { Services } from "./services/contracts.ts";
 import { About, Activity, Dashboard, Notifications, ProfilePage, Recover } from "./ui/account.tsx";
 import { Auth, Brand } from "./ui/auth.tsx";
 import { Inbox, Item, Market, MarketSearch, Seller } from "./ui/market.tsx";
-import { Avatar, Button, Empty } from "./ui/primitives.tsx";
+import { Avatar, Button, Empty, notificationCopy } from "./ui/primitives.tsx";
 import { ReservationDetail, ReservationList } from "./ui/reservations.tsx";
 import { Basket, BatchDetail, ListingPage, Listings, Stock } from "./ui/retailer.tsx";
 import { Provider, useUI } from "./ui/state.tsx";
@@ -54,6 +54,32 @@ function Header() {
     navigate = useNavigate();
   const [params] = useSearchParams();
   const [pop, setPop] = useState<"profile" | "notifications" | null>(null);
+  const notificationWrap = useRef<HTMLDivElement>(null);
+  const profileWrap = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => setPop(null), [location.pathname]);
+  useEffect(() => {
+    if (!pop) return;
+    const wrapper = (pop === "notifications" ? notificationWrap : profileWrap).current;
+    function outside(event: MouseEvent) {
+      if (event.target instanceof Node && !wrapper?.contains(event.target)) setPop(null);
+    }
+    function escape(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        document.querySelector("#ov.open, dialog:modal")
+      )
+        return;
+      setPop(null);
+      wrapper?.querySelector("button")?.focus();
+    }
+    document.addEventListener("click", outside, true);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("click", outside, true);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [pop]);
   const { user, store } = data.session!;
   const retailer = user.role === "retailer";
   const market = /^\/(market|item|seller)(\/|$)/.test(location.pathname),
@@ -62,7 +88,6 @@ function Header() {
     ? [
         { to: "/dashboard", label: "Store today", icon: "home", test: /^\/dashboard$/ },
         {
-          group: "Track",
           to: "/batches",
           label: "Stock",
           icon: "box",
@@ -75,7 +100,6 @@ function Header() {
           ).length,
         },
         {
-          group: "Rescue",
           to: "/listings",
           label: "Listings",
           icon: "store",
@@ -96,7 +120,6 @@ function Header() {
     : [
         { to: "/dashboard", label: "Today", icon: "home", test: /^\/dashboard$/ },
         {
-          group: "Track",
           to: "/inventory",
           label: "My food",
           icon: "box",
@@ -106,7 +129,6 @@ function Header() {
           ).length,
         },
         {
-          group: "Rescue",
           to: "/market",
           label: "Find food",
           icon: "store",
@@ -125,20 +147,16 @@ function Header() {
     nav.map((entry) => {
       const active = entry.test.test(location.pathname);
       return (
-        <span className="contents" key={entry.to}>
-          {!mobile && entry.group && (
-            <span className={"ngrp g-" + entry.group.toLowerCase()}>{entry.group}</span>
-          )}
-          <Link
-            to={entry.to}
-            aria-current={active ? "page" : undefined}
-            className={(mobile ? "" : "nav-i ") + (active ? "on" : "")}
-          >
-            <Glyph name={entry.icon} />
-            <span>{entry.label}</span>
-            {!!entry.badge && <i>{entry.badge}</i>}
-          </Link>
-        </span>
+        <Link
+          key={entry.to}
+          to={entry.to}
+          aria-current={active ? "page" : undefined}
+          className={(mobile ? "" : "nav-i ") + (active ? "on" : "")}
+        >
+          {mobile && <Glyph name={entry.icon} />}
+          <span>{entry.label}</span>
+          {!!entry.badge && <i>{entry.badge}</i>}
+        </Link>
       );
     });
   const unread = data.notifs.filter((n) => n.unread).length,
@@ -158,12 +176,6 @@ function Header() {
   }
   return (
     <>
-      <div className="protobar" role="note">
-        <span>
-          <b>{mode === "demo" ? "Prototype" : "Local Supabase"}</b> · test data only
-        </span>
-        <Link to="/about">About FreshSave</Link>
-      </div>
       <header
         className={location.pathname.startsWith("/item/") ? "hdr hdr-product" : "hdr"}
         id="hdr"
@@ -187,22 +199,29 @@ function Header() {
               <Button
                 className="hbtn"
                 act="inbox"
-                aria-label="Messages (simulated)"
-                onClick={() => setChat("inbox")}
+                aria-label="Demo messages"
+                onClick={(event) => {
+                  event.currentTarget.focus();
+                  setChat("inbox");
+                }}
               >
                 <Glyph name="chat" />
               </Button>
             )}
-            <div className="hwrap">
+            <div className="hwrap" ref={notificationWrap}>
               <Button
                 className="hbtn"
                 act="npop"
-                aria-label="Notifications"
+                aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
                 aria-expanded={pop === "notifications"}
                 onClick={() => setPop(pop === "notifications" ? null : "notifications")}
               >
                 <Glyph name="bell" />
-                {!!unread && <span className="dot">{unread}</span>}
+                {!!unread && (
+                  <span className="dot" aria-hidden="true">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                )}
               </Button>
               {pop === "notifications" && (
                 <div className="pop open" id="npop">
@@ -212,28 +231,31 @@ function Header() {
                       Mark all read
                     </Button>
                   </div>
-                  {data.notifs.slice(0, 6).map((n) => (
-                    <Button
-                      key={n.id}
-                      className={"pi" + (n.unread ? " unread" : "")}
-                      onClick={async () => {
-                        if ((await run("readNotification", { id: n.id })).ok) {
-                          setPop(null);
-                          navigate(n.href.replace(/^#/, ""));
-                        }
-                      }}
-                    >
-                      <div>
-                        <b>{n.text}</b>
-                        <small>{n.sub}</small>
-                      </div>
-                    </Button>
-                  ))}
+                  {data.notifs.slice(0, 6).map((n) => {
+                    const { title, detail } = notificationCopy(n);
+                    return (
+                      <Button
+                        key={n.id}
+                        className={"pi" + (n.unread ? " unread" : "")}
+                        onClick={async () => {
+                          if ((await run("readNotification", { id: n.id })).ok) {
+                            setPop(null);
+                            navigate(n.href.replace(/^#/, ""));
+                          }
+                        }}
+                      >
+                        <div>
+                          <b>{title}</b>
+                          <small>{detail}</small>
+                        </div>
+                      </Button>
+                    );
+                  })}
                   {link("/notifications", "View all notifications")}
                 </div>
               )}
             </div>
-            <div className="hwrap">
+            <div className="hwrap" ref={profileWrap}>
               <Button
                 className="hbtn prof"
                 act="mpop"
@@ -260,7 +282,7 @@ function Header() {
                       {link("/basket", "Clearance Basket")}
                     </>
                   )}
-                  {link("/about", "About this prototype")}
+                  {link("/about", "About FreshSave")}
                   <Button
                     className="pi sep"
                     act="logout"
@@ -308,7 +330,7 @@ function Header() {
 }
 
 function Shell() {
-  const { data, mode } = useUI(),
+  const { data, routeStatus } = useUI(),
     location = useLocation(),
     main = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -346,17 +368,8 @@ function Shell() {
       </a>
       <Header key={data.session.user.id} />
       <main id="main" tabIndex={-1} data-page={location.pathname.split("/")[1]} ref={main}>
-        <Outlet />
+        {routeStatus || <Outlet />}
       </main>
-      <footer className="foot">
-        <div className="wrap">
-          <span>
-            <b>FreshSave</b> · {mode === "demo" ? "design prototype" : "local test environment"} ·
-            reserve online, pay in person, collect at the seller
-          </span>
-          <Link to="/about">About FreshSave</Link>
-        </div>
-      </footer>
     </div>
   );
 }

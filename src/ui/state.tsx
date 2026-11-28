@@ -9,10 +9,12 @@ interface Settings {
 export interface UI extends Settings {
   data: ViewData;
   mode: Services["mode"];
+  routeStatus: ReactNode;
   run: Services["run"];
   read: Services["read"];
   dialog: (contents: ReactNode) => void;
   close: () => void;
+  lockDialog: () => (() => boolean) | undefined;
   notify: (text: string, undo?: () => Promise<unknown>) => void;
 }
 export const Context = createContext<UI | null>(null);
@@ -27,13 +29,14 @@ export function Provider({ services, children }: { services: Services; children:
   const [distance, setDistance] = useState<Settings["distance"]>(5);
   const [revision, setRevision] = useState(0);
   const [view, setView] = useState<{ key: string; data: ViewData }>();
-  const [error, setError] = useState("");
+  const [failure, setFailure] = useState<{ key: string; message: string }>();
   const [modal, setModal] = useState<ReactNode>(null);
   const [notices, setNotices] = useState<
     { id: string; text: string; undo?: () => Promise<unknown> }[]
   >([]);
   const priorFocus = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogLock = useRef<symbol | null>(null);
   const key = location.pathname + location.search;
   const retailerDashboard =
     location.pathname === "/dashboard" && view?.data.session?.user.role === "retailer";
@@ -73,12 +76,15 @@ export function Provider({ services, children }: { services: Services; children:
       .then((data) => {
         if (active) {
           setView({ key, data });
-          setError("");
+          setFailure(undefined);
         }
       })
       .catch((cause) => {
         if (active)
-          setError(cause instanceof Error ? cause.message : "FreshSave could not load this page.");
+          setFailure({
+            key,
+            message: cause instanceof Error ? cause.message : "FreshSave could not load this page.",
+          });
       });
     return () => {
       active = false;
@@ -86,13 +92,28 @@ export function Provider({ services, children }: { services: Services; children:
   }, [services, key, distance, revision, location.pathname, location.search]);
 
   function close() {
+    if (dialogLock.current) return;
     setModal(null);
     const focus = priorFocus.current;
-    if (focus?.isConnected) focus.focus();
+    if (focus?.isConnected) {
+      const closedMenu = focus.closest("details:not([open])");
+      (closedMenu?.querySelector<HTMLElement>("summary") ?? focus).focus();
+    }
     priorFocus.current = null;
+  }
+  function lockDialog() {
+    if (dialogLock.current) return;
+    const token = Symbol();
+    dialogLock.current = token;
+    return () => {
+      if (dialogLock.current !== token) return false;
+      dialogLock.current = null;
+      return true;
+    };
   }
   useEffect(() => {
     setModal(null);
+    dialogLock.current = null;
     priorFocus.current = null;
     window.scrollTo(0, 0);
   }, [location.pathname]);
@@ -115,8 +136,12 @@ export function Provider({ services, children }: { services: Services; children:
       fields[0] ||
       target
     ).focus();
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector("dialog:modal")
+      ) {
         event.preventDefault();
         close();
       }
@@ -124,15 +149,21 @@ export function Provider({ services, children }: { services: Services; children:
       const fields = focusable(),
         first = fields[0],
         last = fields[fields.length - 1];
-      if (event.shiftKey && document.activeElement === first && last) {
+      const focusInside = target.contains(document.activeElement);
+      if (
+        event.shiftKey &&
+        (!focusInside || document.activeElement === first || document.activeElement === target) &&
+        last
+      ) {
         event.preventDefault();
         last.focus();
       }
-      if (!event.shiftKey && document.activeElement === last && first) {
+      if (!event.shiftKey && (!focusInside || document.activeElement === last) && first) {
         event.preventDefault();
         first.focus();
       }
-    }
+      if (!first) event.preventDefault();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [modal]);
@@ -156,40 +187,47 @@ export function Provider({ services, children }: { services: Services; children:
     return services.run(name, input);
   }
 
-  if (error)
-    return (
-      <div className="empty" role="alert">
-        <h1>Could not load FreshSave</h1>
-        <p>{error}</p>
-        <button
-          className="btn"
-          onClick={() => {
-            setError("");
-            refresh();
-          }}
-        >
-          Retry
-        </button>
-      </div>
-    );
-  if (!view || view.key.split("?")[0] !== location.pathname)
-    return (
-      <main aria-busy="true">
-        <p className="wrap py-8">Loading FreshSave…</p>
-      </main>
-    );
+  const error = failure?.key === key ? failure.message : undefined;
+  const routeStatus = error ? (
+    <div className="empty" role="alert">
+      <h1>Could not load FreshSave</h1>
+      <p>{error}</p>
+      <button
+        className="btn"
+        onClick={() => {
+          setFailure(undefined);
+          refresh();
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  ) : view?.key.split("?")[0] !== location.pathname ? (
+    <div role="status" aria-busy="true">
+      <p className="wrap py-8">Loading FreshSave…</p>
+    </div>
+  ) : null;
+  if (
+    !view ||
+    (routeStatus &&
+      (!view.data.session || /^\/(login|register|forgot|recover)$/.test(location.pathname)))
+  )
+    return <main>{routeStatus}</main>;
   return (
     <Context.Provider
       value={{
         data: view.data,
         mode: services.mode,
+        routeStatus,
         distance,
         setDistance,
         run,
         read: services.read,
         close,
+        lockDialog,
         notify,
         dialog: (contents) => {
+          if (dialogLock.current) return;
           if (!modal)
             priorFocus.current =
               document.activeElement instanceof HTMLElement ? document.activeElement : null;

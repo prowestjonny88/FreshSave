@@ -285,6 +285,21 @@ export function createDemoServices(): Services {
     saveFood: (input) => {
       const user = actor(),
         isBatch = user.role === "retailer";
+      if (input.reservationId) {
+        const reservation = state().reservations.find((r) => r.id === input.reservationId);
+        if (
+          isBatch ||
+          input.id ||
+          reservation?.buyerId !== user.id ||
+          reservation.status !== "completed" ||
+          reservation.disputed
+        )
+          throw new RequestError("forbidden", "This handover cannot be added to My food.");
+        const saved = state().inventory.find(
+          (item) => item.owner === user.id && item.reservationId === input.reservationId,
+        );
+        if (saved) return saved.id;
+      }
       const previous = input.id ? (isBatch ? ownBatch(input.id) : ownFood(input.id)) : undefined;
       validateFood(input, previous);
       if (previous && "verify" in previous) {
@@ -341,6 +356,7 @@ export function createDemoServices(): Services {
           ...base,
           id,
           owner: user.id,
+          reservationId: input.reservationId,
           addedAt: Date.now(),
           purchased: input.date,
           status: "active",
@@ -607,7 +623,7 @@ export function createDemoServices(): Services {
 
   return {
     mode: "demo",
-    async read() {
+    async read(query) {
       if (!state().session) return emptyView();
       const session = requiredSession(),
         { user } = session;
@@ -631,6 +647,12 @@ export function createDemoServices(): Services {
               r.status === "confirmed" && (r.buyerId === user.id || r.sample) ? r.pin : undefined,
           })),
         notifs: data.notifs.filter((record) => record.user === user.id),
+        collectedFood:
+          query.page === "reservation" && query.id
+            ? data.inventory.find(
+                (item) => item.owner === user.id && item.reservationId === query.id,
+              )
+            : undefined,
         activity: data.activity.filter((record) => record.user === user.id),
         listings: data.listings.map((l) => ({ ...l, units: listingLedger(l, data.reservations) })),
         catalogue: data.catalogue,

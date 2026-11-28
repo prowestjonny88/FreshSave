@@ -28,6 +28,7 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
     [error, setError] = useState(""),
     [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const demoRecovery = page === "forgot" && mode === "demo";
   useEffect(() => {
     if (
       data.session && // Keep the new-account destination from the submit handler.
@@ -122,8 +123,7 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
         <div className="auth-card">
           <div className="protonote">
             <span>
-              <b>{mode === "demo" ? "Prototype." : "Local test environment."}</b> All sample sellers
-              are fictional.{" "}
+              Sample sellers are fictional.{" "}
               <Link className="link" to="/about">
                 About FreshSave
               </Link>
@@ -136,15 +136,40 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
                 ? "Create your account"
                 : "Reset password"}
           </h1>
-          {page === "forgot" && mode === "demo" && (
+          {page === "login" && mode === "demo" && (
+            <div className="demo" id="demo-accounts">
+              <h2>Try a demo account</h2>
+              {[
+                ["aisyah@freshsave.my", "Aisyah Rahman", "Continue as demo buyer"],
+                ["pakdin@freshsave.my", "Kedai Runcit Pak Din", "Continue as demo retailer"],
+              ].map(([email, name, label]) => (
+                <Button
+                  className="demo-acc"
+                  key={email}
+                  act="demo"
+                  data-e={email}
+                  disabled={busy}
+                  onClick={() => {
+                    void signIn(email, "demo1234", true);
+                  }}
+                >
+                  <Avatar name={name} />
+                  <span>
+                    <b>{label}</b>
+                    <small>{name}</small>
+                  </span>
+                </Button>
+              ))}
+              <p className="mute sm">
+                Demo password: demo1234. Accounts exist only in this browser.
+              </p>
+            </div>
+          )}
+          {demoRecovery && (
             <Note danger>Demo only. No email is sent and passwords can’t be recovered.</Note>
           )}
-          {sent ? (
-            <Note>
-              {mode === "demo"
-                ? "No email was sent."
-                : "If this account exists, check the local mail inbox for reset instructions."}
-            </Note>
+          {demoRecovery ? null : sent ? (
+            <Note>If this account exists, check the local mail inbox for reset instructions.</Note>
           ) : (
             <form id={"f-" + page} noValidate onSubmit={submit}>
               {page === "register" && (
@@ -239,38 +264,10 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
               </>
             ) : (
               <Link className="link" to="/login">
-                Back to log in
+                {demoRecovery ? "Back to demo accounts" : "Back to log in"}
               </Link>
             )}
           </p>
-          {page === "login" && mode === "demo" && (
-            <div className="demo">
-              <h6>Try a demo account (no sign-up needed)</h6>
-              {[
-                ["aisyah@freshsave.my", "Aisyah Rahman", "Individual"],
-                ["pakdin@freshsave.my", "Kedai Runcit Pak Din", "Retailer"],
-              ].map(([email, name, label]) => (
-                <Button
-                  className="demo-acc"
-                  key={email}
-                  act="demo"
-                  data-e={email}
-                  onClick={() => {
-                    void signIn(email, "demo1234", true);
-                  }}
-                >
-                  <Avatar name={name} />
-                  <span>
-                    <b>{name}</b>
-                    <small>{label}</small>
-                  </span>
-                </Button>
-              ))}
-              <p className="mute sm">
-                Demo password: demo1234. Accounts exist only in this browser.
-              </p>
-            </div>
-          )}
         </div>
       </section>
     </div>

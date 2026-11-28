@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { SCAN_SAMPLES, photo } from "../data.js";
 import type { Batch, CatalogueItem, FoodInput, InventoryItem, StockUse } from "../domain/model.ts";
@@ -39,6 +39,7 @@ export interface FoodDraft {
   kind?: string;
   barcode?: string;
   source?: string;
+  reservationId?: string;
   detection?: "success" | "uncertain" | "failed" | "barcode";
   suggested?: string;
   illustration?: string;
@@ -76,9 +77,11 @@ export function FoodForm({
   popup?: boolean;
   afterSave?: (id: string) => void;
 }) {
-  const { data, run, close, notify } = useUI(),
+  const { data, run, close, lockDialog, notify } = useUI(),
     navigate = useNavigate();
   const location = useLocation();
+  const [picture, setPicture] = useState(draft.photo);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const prefix = popup ? "man" : "res",
     retailer = data.session?.user.role === "retailer";
   const [values, setValues] = useState({
@@ -123,7 +126,7 @@ export function FoodForm({
   );
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (saving) return;
+    if (saving || photoBusy) return;
     if (!values.expiryType) {
       setErrors(
         values.name.trim().length < 2
@@ -134,19 +137,26 @@ export function FoodForm({
       );
       return;
     }
+    const unlock = popup ? lockDialog() : undefined;
+    if (popup && !unlock) return;
     setSaving(true);
-    const payload: FoodInput & { id?: string; source?: string } = {
+    const payload: FoodInput & { id?: string; source?: string; reservationId?: string } = {
       ...values,
       expiryType: values.expiryType,
       id: draft.id,
       source: draft.source,
+      reservationId: draft.reservationId,
       qty: Number(values.qty),
       kind: draft.kind,
-      photo: draft.photo,
+      photo: picture,
       barcode: draft.barcode,
     };
-    const result = await run("saveFood", payload);
-    setSaving(false);
+    let currentDialog = true;
+    const result = await run("saveFood", payload).finally(() => {
+      if (unlock) currentDialog = unlock();
+      setSaving(false);
+    });
+    if (!currentDialog) return;
     if (!result.ok) {
       setErrors({ [result.error.field || "general"]: result.error.message });
       return;
@@ -156,6 +166,7 @@ export function FoodForm({
     if (afterSave) afterSave(result.value);
     else if (!popup)
       navigate(retailer ? "/batch/" + result.value : "/inventory?new=" + result.value);
+    else if (draft.reservationId) navigate("/inventory?item=" + result.value);
     else if (/^\/(scan|reservation)\b/.test(location.pathname))
       navigate(retailer ? "/batches" : "/inventory?new=" + result.value);
   }
@@ -240,7 +251,7 @@ export function FoodForm({
       )}
       <div className={popup ? "macts food-form-actions" : "wnav"}>
         {popup ? (
-          <Button className="btn sec" act="mclose" onClick={close}>
+          <Button className="btn sec" act="mclose" disabled={saving} onClick={close}>
             Cancel
           </Button>
         ) : (
@@ -248,8 +259,8 @@ export function FoodForm({
             Start over
           </Link>
         )}
-        <Button type="submit" disabled={saving}>
-          {draft.id ? "Save changes" : "Confirm & save"}
+        <Button type="submit" disabled={saving || photoBusy}>
+          {saving ? "Saving…" : draft.id ? "Save changes" : "Confirm & save"}
         </Button>
       </div>
     </form>
@@ -283,12 +294,37 @@ export function FoodForm({
       <div className="result">
         <div className="box">
           <div className="res-img">
-            <Picture alt="Scanned product" src={draft.photo || draft.illustration} />
+            <Picture
+              alt={picture ? "Attached product photo" : "Sample product"}
+              src={picture || draft.illustration}
+            />
           </div>
           <div className="detect">
             <b>{detection && resultText[detection]}</b>
             <small>Confirm the date yourself before saving.</small>
           </div>
+          {detection !== "barcode" && (
+            <Field id="scan-file" label="Attach a photo (optional)">
+              <input
+                type="file"
+                id="scan-file"
+                accept="image/*"
+                disabled={photoBusy}
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  setPhotoBusy(true);
+                  try {
+                    setPicture(await readPhoto(file));
+                  } catch {
+                    notify("Could not read that image");
+                  } finally {
+                    setPhotoBusy(false);
+                  }
+                }}
+              />
+            </Field>
+          )}
           {detection === "barcode" && (
             <Button
               className="btn sec block"
@@ -316,66 +352,29 @@ export function ScanResult() {
 }
 
 export function Scan() {
-  const { data, dialog, notify } = useUI(),
-    navigate = useNavigate();
+  const { data, dialog } = useUI();
+  const navigate = useNavigate();
   const retailer = data.session?.user.role === "retailer";
-  const [stage, setStage] = useState<"idle" | "camera" | "processing">("idle");
-  const [scenario, setScenario] = useState("milk"),
-    [uploaded, setUploaded] = useState<string | null>(null);
-  const captureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(captureTimer.current), []);
-  const sample = SCAN_SAMPLES.find((item) => item.id === scenario)!;
-  function capture(image = uploaded) {
-    setStage("processing");
-    clearTimeout(captureTimer.current);
-    captureTimer.current = setTimeout(() => {
-      const suggested = sample.exp === null ? "" : shiftDay(today(), sample.exp);
-      const draft: FoodDraft = {
-        name: sample.name,
-        cat: sample.cat,
-        kind: sample.kind,
-        qty: 1,
-        detection: sample.result as FoodDraft["detection"],
-        expiryType: sample.et as DateType,
-        expiry: sample.result === "success" ? suggested : "",
-        suggested,
-        photo: image,
-        illustration: photo(sample.kind),
-      };
-      navigate("/scan/result", { state: draft });
-    }, 1300);
+  function trySample(sample: (typeof SCAN_SAMPLES)[number]) {
+    const suggested = sample.exp === null ? "" : shiftDay(today(), sample.exp);
+    const draft: FoodDraft = {
+      name: sample.name,
+      cat: sample.cat,
+      kind: sample.kind,
+      qty: 1,
+      detection: sample.result as FoodDraft["detection"],
+      expiryType: sample.et as DateType,
+      expiry: sample.result === "success" ? suggested : "",
+      suggested,
+      illustration: photo(sample.kind),
+    };
+    navigate("/scan/result", { state: draft });
   }
-  const uploader = (
-    <label className="btn sec">
-      Upload a photo
-      <input
-        type="file"
-        accept="image/*"
-        id="scan-file"
-        hidden
-        onChange={async (event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          try {
-            const image = await readPhoto(file);
-            setUploaded(image);
-            capture(image);
-          } catch {
-            notify("Could not read that image");
-          }
-        }}
-      />
-    </label>
-  );
+
   return (
     <>
       <Heading
         title={retailer ? "Add stock" : "Add food"}
-        sub={
-          retailer
-            ? "Scan the pack or record a batch in your stock."
-            : "Scan the pack or enter food by hand."
-        }
         group="Track"
         action={
           <>
@@ -388,89 +387,53 @@ export function Scan() {
           </>
         }
       />
-      <Note danger>
-        <b>Simulated scanning.</b> No camera is opened and nothing is read from your photo. Confirm
-        the date before saving.
-      </Note>
-      <div className="scan simple">
-        <div className={"cam " + stage}>
-          {stage === "idle" ? (
-            <div className="cam-off">
-              <h3>Photograph the product and its date</h3>
-              <div className="acts">
-                <Button act="camon" onClick={() => setStage("camera")}>
-                  Start simulated scan
-                </Button>
-                {uploader}
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="viewfinder">
-                <Picture alt="Camera preview" src={uploaded || photo(sample.kind)} />
-                {stage === "processing" && <div className="vf-busy">Reading demo label…</div>}
-              </div>
-              <div className="cam-ctl">
-                <Button
-                  act="camoff"
-                  className="btn sec"
-                  disabled={stage === "processing"}
-                  onClick={() => setStage("idle")}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  act="capture"
-                  className="shutter"
-                  aria-label="Capture"
-                  disabled={stage === "processing"}
-                  onClick={() => capture()}
-                />
-                {uploader}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="tipsline">
-          <span>Show the product name and printed date</span>
-          <span>Keep the label in focus</span>
-        </div>
-        <Disclosure title="Demo option · choose a result" className="demo-opts">
-          {SCAN_SAMPLES.map((item) => (
-            <label className="rad" key={item.id}>
-              <input
-                type="radio"
-                name="sample"
-                value={item.id}
-                checked={scenario === item.id}
-                onChange={() => setScenario(item.id)}
-              />
-              {item.label}
-            </label>
+      <section className="box sample-scan" aria-labelledby="sample-scan-title">
+        <h2 id="sample-scan-title">Try a sample scan</h2>
+        <p>Simulated scanning. Choose a sample, then check its date before saving.</p>
+        <div className="row-acts">
+          {SCAN_SAMPLES.map((sample) => (
+            <Button
+              className="btn sec"
+              key={sample.id}
+              act="scan-sample"
+              data-id={sample.id}
+              onClick={() => trySample(sample)}
+            >
+              {
+                { success: "Clear date", uncertain: "Blurry date", failed: "Missing date" }[
+                  sample.result
+                ]
+              }
+            </Button>
           ))}
-        </Disclosure>
-      </div>
+        </div>
+      </section>
     </>
   );
 }
 
 export function Barcode() {
-  const { run, notify } = useUI(),
+  const { run } = useUI(),
     navigate = useNavigate();
   const [code, setCode] = useState(""),
     [outcome, setOutcome] = useState<CatalogueItem | null>(),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [fieldError, setFieldError] = useState("");
+  const barcodeField = useRef<HTMLInputElement>(null);
   async function lookup(input: string) {
     const barcode = input.replace(/\D/g, "");
     setCode(barcode);
     setOutcome(undefined);
     setError("");
+    setFieldError("");
     if (![8, 12, 13, 14].includes(barcode.length)) {
-      notify("Enter 8, 12, 13 or 14 digits");
+      setFieldError("Enter 8, 12, 13 or 14 digits.");
+      barcodeField.current?.focus();
       return;
     }
     if (!gtinOk(barcode)) {
-      notify("That barcode’s check digit doesn’t match.");
+      setFieldError("That barcode’s check digit doesn’t match.");
+      barcodeField.current?.focus();
       return;
     }
     const result = await run("findBarcode", { barcode });
@@ -507,13 +470,13 @@ export function Barcode() {
             void lookup(code);
           }}
         >
-          <div className="bc-scan">
-            <span>Barcode camera (simulated)</span>
-          </div>
-          <Field id="bc-code" label="Barcode number">
+          <Field id="bc-code" label="Barcode number" error={fieldError}>
             <div className="inline">
               <input
                 id="bc-code"
+                ref={barcodeField}
+                aria-invalid={!!fieldError || undefined}
+                aria-describedby={fieldError ? "bc-code-error" : undefined}
                 inputMode="numeric"
                 maxLength={14}
                 value={code}
@@ -601,8 +564,16 @@ export function Barcode() {
   );
 }
 
-function UseFood({ item, type }: { item: InventoryItem; type: StockUse }) {
-  const { run, notify } = useUI(),
+function UseFood({
+  item,
+  type,
+  onUsed,
+}: {
+  item: InventoryItem;
+  type: StockUse;
+  onUsed: (qty: number) => void;
+}) {
+  const { run } = useUI(),
     [qty, setQty] = useState(1);
   const word = type === "consumed" ? "used" : "discarded";
   return (
@@ -611,8 +582,7 @@ function UseFood({ item, type }: { item: InventoryItem; type: StockUse }) {
       action={"Mark " + word}
       submit={async () => {
         const result = await run("useFood", { id: item.id, type, qty });
-        if (result.ok)
-          notify(`${qty} × ${item.name} marked ${word}`, () => run("undoFood", { id: item.id }));
+        if (result.ok) onUsed(qty);
         return result;
       }}
     >
@@ -644,9 +614,23 @@ export function Inventory() {
   const [query, setQuery] = useState(""),
     [category, setCategory] = useState(""),
     [sort, setSort] = useState("exp");
+  const table = useRef<HTMLTableElement>(null);
+  const fallback = useRef<HTMLDivElement>(null);
+  const [focusRequest, setFocusRequest] = useState<{
+    id: string;
+    candidates: string[];
+    previousStatus?: InventoryItem["status"];
+    query: string;
+  }>();
   const active = data.inventory.filter((item) => item.status === "active"),
     now = Date.now();
-  const key = params.get("st") || "active",
+  const selected = params.get("item"),
+    selectedFood = data.inventory.find((item) => item.id === selected),
+    key = selectedFood
+      ? selectedFood.status === "active"
+        ? "active"
+        : "history"
+      : params.get("st") || "active",
     soon = ["d1", "d3", "d7"].includes(key);
   const tab = soon ? "d7" : ["history", "expired"].includes(key) ? key : "active";
   const matches = (item: InventoryItem, filter: string) => {
@@ -660,7 +644,7 @@ export function Inventory() {
   };
   const rows = data.inventory.filter(
     (item) =>
-      matches(item, soon ? key : tab) &&
+      (selected ? item.id === selected : matches(item, soon ? key : tab)) &&
       (key !== "fresh" || daysUntil(item.expiry, now) > 7) &&
       item.name.toLowerCase().includes(query.toLowerCase()) &&
       (!category || item.cat === category),
@@ -676,16 +660,62 @@ export function Inventory() {
             ? b.qty - a.qty
             : a.expiry.localeCompare(b.expiry),
   );
+  useLayoutEffect(() => {
+    if (!focusRequest) return;
+    const current = data.inventory.find((record) => record.id === focusRequest.id);
+    if (
+      focusRequest.query === params.toString() &&
+      (focusRequest.previousStatus
+        ? current?.status === focusRequest.previousStatus
+        : current?.status !== "active")
+    )
+      return;
+    const rendered = Array.from(
+      table.current?.querySelectorAll<HTMLTableRowElement>("tr[data-food-id]") ?? [],
+    );
+    const target = focusRequest.candidates
+      .map((id) => rendered.find((row) => row.dataset.foodId === id))
+      .find(Boolean);
+    (
+      target?.querySelector<HTMLElement>(".acts-cell > button") ??
+      fallback.current?.querySelector<HTMLElement>(".tab.on")
+    )?.focus();
+    setFocusRequest(undefined);
+  }, [data.inventory, focusRequest, params]);
+
+  function focusAfterRemoval(item: InventoryItem) {
+    const index = rows.findIndex((row) => row.id === item.id);
+    setFocusRequest({
+      id: item.id,
+      candidates: [
+        item.id,
+        ...rows.slice(index + 1).map((row) => row.id),
+        ...rows
+          .slice(0, index)
+          .reverse()
+          .map((row) => row.id),
+      ],
+      previousStatus: item.status,
+      query: params.toString(),
+    });
+  }
+  function reportUse(item: InventoryItem, type: StockUse, qty: number) {
+    if (qty === item.qty) focusAfterRemoval(item);
+    const word = type === "consumed" ? "used" : "discarded";
+    notify(item.name + " marked " + word, async () => {
+      const result = await run("undoFood", { id: item.id });
+      if (result.ok)
+        setFocusRequest({ id: item.id, candidates: [item.id], query: params.toString() });
+      else notify(result.error.message);
+    });
+  }
   async function useFood(item: InventoryItem, type: StockUse) {
     if (item.qty > 1) {
-      dialog(<UseFood item={item} type={type} />);
+      dialog(<UseFood item={item} type={type} onUsed={(qty) => reportUse(item, type, qty)} />);
       return;
     }
     const result = await run("useFood", { id: item.id, type, qty: 1 });
-    if (result.ok)
-      notify(item.name + (type === "consumed" ? " marked used" : " discarded"), () =>
-        run("undoFood", { id: item.id }),
-      );
+    if (result.ok) reportUse(item, type, 1);
     else notify(result.error.message);
   }
   return (
@@ -705,19 +735,26 @@ export function Inventory() {
           </>
         }
       />
-      <Tabs
-        items={[
-          ["active", "All"],
-          ["d7", "Use soon"],
-          ["expired", "Past date"],
-          ["history", "Used & discarded"],
-        ].map(([id, label]) => ({
-          label,
-          active: tab === id,
-          count: data.inventory.filter((item) => matches(item, id)).length,
-          to: "/inventory?st=" + id,
-        }))}
-      />
+      {selected && (
+        <Link className="link" to="/inventory">
+          View all food
+        </Link>
+      )}
+      <div ref={fallback}>
+        <Tabs
+          items={[
+            ["active", "All"],
+            ["d7", "Use soon"],
+            ["expired", "Past date"],
+            ["history", "Used & discarded"],
+          ].map(([id, label]) => ({
+            label,
+            active: tab === id,
+            count: data.inventory.filter((item) => matches(item, id)).length,
+            to: "/inventory?st=" + id,
+          }))}
+        />
+      </div>
       {soon && (
         <div className="chips">
           <span className="mute">Due within</span>
@@ -776,7 +813,7 @@ export function Inventory() {
       )}
       {rows.length ? (
         <div className="tblwrap">
-          <table className="tbl inv">
+          <table className="tbl inv" ref={table}>
             <thead>
               <tr>
                 <th>Product</th>
@@ -789,7 +826,13 @@ export function Inventory() {
             </thead>
             <tbody>
               {rows.map((item) => (
-                <tr className={params.get("new") === item.id ? "hl" : undefined} key={item.id}>
+                <tr
+                  data-food-id={item.id}
+                  className={
+                    params.get("new") === item.id || selected === item.id ? "hl" : undefined
+                  }
+                  key={item.id}
+                >
                   <ProductCell item={item} />
                   <td data-l="Left">
                     {item.status === "active" ? (
@@ -840,8 +883,11 @@ export function Inventory() {
                           act="invundo"
                           data-id={item.id}
                           onClick={async () => {
-                            await run("undoFood", { id: item.id });
-                            notify("Restored");
+                            const result = await run("undoFood", { id: item.id });
+                            if (result.ok) {
+                              focusAfterRemoval(item);
+                              notify("Restored");
+                            } else notify(result.error.message);
                           }}
                         >
                           Restore
@@ -895,7 +941,11 @@ export function Inventory() {
                                 title="Delete this item?"
                                 action="Delete"
                                 danger
-                                submit={() => run("deleteFood", { id: item.id })}
+                                submit={async () => {
+                                  const result = await run("deleteFood", { id: item.id });
+                                  if (result.ok) focusAfterRemoval(item);
+                                  return result;
+                                }}
                               >
                                 {item.name}
                               </Confirm>,

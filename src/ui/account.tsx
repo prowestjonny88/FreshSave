@@ -16,9 +16,11 @@ import {
   formatDeadline,
   Heading,
   Note,
+  notificationCopy,
   PageNavigation,
   Picture,
   rm,
+  units,
 } from "./primitives.tsx";
 import { useUI } from "./state.tsx";
 
@@ -183,7 +185,7 @@ export function Dashboard() {
                   <Picture src={item.photo || photo(item.kind, 0, 200)} />
                   <span>
                     <b>{item.name}</b>
-                    <small>{item.qty} units</small>
+                    <small>{units(item.qty)}</small>
                   </span>
                   <DateBadge expiry={item.expiry} type={item.expiryType} />
                 </Link>
@@ -240,6 +242,9 @@ export function Notifications() {
   const [tab, setTab] = useState("all");
   const all = data.notifs,
     unread = all.filter((n) => n.unread).length;
+  const urgent = needsToday(data).filter(
+    (action) => action.tone === "hot" && /^\/reservations?(?:[?/]|$)/.test(action.to),
+  );
   const filtered = all.filter(
     (n) =>
       tab === "all" ||
@@ -259,9 +264,26 @@ export function Notifications() {
           </Button>
         }
       />
+      {!!urgent.length && (
+        <section className="box" aria-labelledby="notification-actions">
+          <h2 id="notification-actions">Needs action</h2>
+          <ul className="acts">
+            {urgent.map((action) => (
+              <li key={action.to}>
+                <Link className="link" to={action.to}>
+                  {action.title}
+                </Link>
+                <small>{action.detail}</small>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <p className="hintline">
-        <b>In-app only.</b> Date reminders appear here when they’re due. FreshSave sends no push,
-        SMS or email reminders.
+        <span>
+          <b>In-app only.</b> Date reminders appear here when they’re due. FreshSave sends no push,
+          SMS or email reminders.
+        </span>
       </p>
       <div className="tabs">
         {[
@@ -276,6 +298,7 @@ export function Notifications() {
             <Button
               key={id}
               className={"tab" + (tab === id ? " on" : "")}
+              aria-pressed={tab === id}
               act="ntab"
               data-t={id}
               onClick={() => setTab(id)}
@@ -286,27 +309,30 @@ export function Notifications() {
       </div>
       {filtered.length ? (
         <ul className="nlist">
-          {filtered.map((n) => (
-            <li key={n.id} className={n.unread ? "unread" : ""}>
-              <Button
-                className="pi"
-                act="notif"
-                data-id={n.id}
-                onClick={async () => {
-                  if ((await run("readNotification", { id: n.id })).ok)
-                    navigate(n.href.replace(/^#/, ""));
-                }}
-              >
-                <span className="nt">
-                  <b>{n.text}</b>
-                  <small>{n.sub}</small>
-                </span>
-                <span className="nwhen">
-                  <small>{formatDeadline(n.at)}</small>
-                </span>
-              </Button>
-            </li>
-          ))}
+          {filtered.map((n) => {
+            const { title, detail } = notificationCopy(n);
+            return (
+              <li key={n.id} className={n.unread ? "unread" : ""}>
+                <Button
+                  className="pi"
+                  act="notif"
+                  data-id={n.id}
+                  onClick={async () => {
+                    if ((await run("readNotification", { id: n.id })).ok)
+                      navigate(n.href.replace(/^#/, ""));
+                  }}
+                >
+                  <span className="nt">
+                    <b>{title}</b>
+                    <small>{detail}</small>
+                  </span>
+                  <span className="nwhen">
+                    <small>{formatDeadline(n.at)}</small>
+                  </span>
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <Empty title="Nothing in this view." />
@@ -707,7 +733,7 @@ export function About() {
   return (
     <div className="about">
       <Heading
-        title="About this prototype"
+        title="About FreshSave"
         sub="Track expiry dates and reserve sealed surplus for pickup."
       />
       <section className="box">
@@ -766,6 +792,10 @@ export function About() {
       <section className="box">
         <h2>Pilot food rules</h2>
         <p>Only sealed, packaged food stored at room temperature can be offered on Rescue.</p>
+        <p>
+          Sellers declare their own food information. FreshSave does not inspect, test or certify
+          food.
+        </p>
         <div className="two">
           <div>
             <h3>Accepted</h3>

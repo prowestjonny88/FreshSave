@@ -37,6 +37,7 @@ export interface ViewData {
   recent: string[];
   area?: string | null;
   more?: boolean;
+  collectedFood?: Pick<InventoryItem, "id" | "status">;
   pageSize?: number;
   threads?: Record<
     string,
@@ -90,7 +91,7 @@ export interface Commands {
   area: Command<{ id: string }>;
   recentSearch: Command<{ query: string }>;
   clearSearch: Command<undefined>;
-  saveFood: Command<FoodInput & { id?: string; source?: string }, string>;
+  saveFood: Command<FoodInput & { id?: string; source?: string; reservationId?: string }, string>;
   useFood: Command<{ id: string; type: StockUse; qty: number }>;
   undoFood: Command<{ id: string }>;
   deleteFood: Command<{ id: string }>;

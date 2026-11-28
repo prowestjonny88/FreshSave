@@ -76,7 +76,7 @@ export async function launch({ width = 1440, height = 900, url, realClock = fals
   const api = {
     errors, logs, netfails, sleep, send,
     async eval(expr) { const r = await send('Runtime.evaluate', { expression: `(async()=>{${expr}})()`, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value },
-    async ready() { for (let i = 0; i < 80; i++) { try { const ok = await api.eval(`return !!document.querySelector('#root')?.children.length && (!!document.querySelector('#a-email') || !!document.querySelector('#main')?.innerHTML.length || !!document.querySelector('.auth-plain'))`); if (ok) return } catch {} await sleep(150) } throw new Error('app did not render') },
+    async ready() { for (let i = 0; i < 80; i++) { try { const ok = await api.eval(`return !!document.querySelector('#root')?.children.length && (!!document.querySelector('.auth-card h1') || !!document.querySelector('#main')?.innerHTML.length || !!document.querySelector('.auth-plain'))`); if (ok) return } catch {} await sleep(150) } throw new Error('app did not render') },
     async goto(u) { await send('Page.navigate', { url: u }); await sleep(300); await api.ready() },
     async reload() { await send('Page.reload'); await sleep(300); await api.ready() },
     async fresh(u = new URL('#/login', BASE_URL).href) { await api.goto(u); await api.eval(`localStorage.clear(); sessionStorage.clear()`); await api.reload() },

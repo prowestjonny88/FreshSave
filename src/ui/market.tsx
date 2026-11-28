@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { CATEGORIES, catLabel, LOCATIONS, photo, RESCUE_CATS } from "../data.js";
+import { CATEGORIES, catLabel, LOCATIONS, RESCUE_CATS } from "../data.js";
 import { listingLedger } from "../domain/model.ts";
 import { areaOf, browse, distanceTo, listingStatus, needsToday } from "../domain/selectors.ts";
 import { daysUntil, POLICY } from "../domain/time.ts";
 import {
   Avatar,
-  Badge,
   Button,
   Card,
   Confirm,
@@ -247,6 +246,15 @@ export function Market() {
   const { data, distance, setDistance } = useUI();
   const [params, setParams] = useSearchParams(),
     [filters, setFilters] = useState(false);
+  const filterDrawer = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 1024px)");
+    const closeOnDesktop = () => {
+      if (!mobile.matches) filterDrawer.current?.close();
+    };
+    mobile.addEventListener("change", closeOnDesktop);
+    return () => mobile.removeEventListener("change", closeOnDesktop);
+  }, []);
   const min = params.get("min") || "",
     max = params.get("max") || "",
     expiry = params.get("expiry") || "all";
@@ -342,7 +350,6 @@ export function Market() {
         <div className="wrap market-home">
           <header className="market-intro">
             <h1>Find food</h1>
-            <p>Reserve sealed surplus nearby. Collect and pay in person.</p>
           </header>
           {first && (
             <section className="strip-act" aria-label="Needs you today">
@@ -417,11 +424,26 @@ export function Market() {
   return (
     <div className="wrap">
       <section className="browse">
-        <aside className={"filters" + (filters ? " open" : "")} id="filters" aria-label="Filters">
+        <dialog
+          ref={filterDrawer}
+          className="filters"
+          id="filters"
+          aria-label="Filters"
+          role={filters ? undefined : "complementary"}
+          onClose={() => setFilters(false)}
+          onClick={(event) => {
+            if (!filters || event.target !== event.currentTarget) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (event.clientX >= bounds.right) event.currentTarget.close();
+          }}
+        >
           <div className="fgrp fhead">
             <b>Filters</b>
             <Button className="link sm" act="freset" onClick={reset}>
               Reset filters
+            </Button>
+            <Button className="link sm mobile-only" onClick={() => filterDrawer.current?.close()}>
+              Close
             </Button>
           </div>
           <div className="fgrp">
@@ -442,81 +464,96 @@ export function Market() {
               </label>
             ))}
           </div>
-          <Disclosure title="More filters · date, price" className="flat">
-            <label className="rad">
-              Date type{" "}
-              <select value={dateType} onChange={(event) => update("dateType", event.target.value)}>
-                <option value="all">Any</option>
-                <option value="best-before">Best before</option>
-                <option value="use-by">Use by</option>
-              </select>
-            </label>
-            <label className="rad">
-              Date on pack{" "}
-              <select value={expiry} onChange={(event) => update("expiry", event.target.value)}>
-                <option value="all">Any</option>
-                <option value="3">Within 3 days</option>
-                <option value="7">Within 7 days</option>
-              </select>
-            </label>
-            <div className="pricefields">
-              <label>
-                <span>Min</span>
-                <input
-                  type="number"
-                  min={0}
-                  data-f="min"
-                  value={min}
-                  onChange={(event) => update("min", event.target.value)}
-                />
-              </label>
-              <label>
-                <span>Max</span>
-                <input
-                  type="number"
-                  min={0}
-                  data-f="max"
-                  value={max}
-                  onChange={(event) => update("max", event.target.value)}
-                />
-              </label>
-            </div>
-            <div className="pills">
-              {[
-                ["", "5", "Up to RM5"],
-                ["5", "10", "RM5–RM10"],
-                ["10", "20", "RM10–RM20"],
-                ["20", "", "RM20+"],
-              ].map(([low, high, label]) => (
-                <Button
-                  className={"pill" + (low === min && high === max ? " on" : "")}
-                  key={label}
-                  onClick={() => {
-                    const next = new URLSearchParams(params);
-                    next.delete("offset");
-                    if (low && (min !== low || max !== high)) next.set("min", low);
-                    else next.delete("min");
-                    if (high && (min !== low || max !== high)) next.set("max", high);
-                    else next.delete("max");
-                    setParams(next);
-                  }}
+          <div className="fgrp filter-advanced">
+            <Disclosure title="Date and price" className="flat">
+              <label className="rad">
+                Date type{" "}
+                <select
+                  value={dateType}
+                  onChange={(event) => update("dateType", event.target.value)}
                 >
-                  {label}
-                </Button>
-              ))}
-            </div>
-          </Disclosure>
-          <Button className="btn mobile-only" onClick={() => setFilters(false)}>
-            Show {results.length} results
-          </Button>
-        </aside>
-        <div className={"scrim" + (filters ? " open" : "")} onClick={() => setFilters(false)} />
+                  <option value="all">Any</option>
+                  <option value="best-before">Best before</option>
+                  <option value="use-by">Use by</option>
+                </select>
+              </label>
+              <label className="rad">
+                Date on pack{" "}
+                <select value={expiry} onChange={(event) => update("expiry", event.target.value)}>
+                  <option value="all">Any</option>
+                  <option value="3">Within 3 days</option>
+                  <option value="7">Within 7 days</option>
+                </select>
+              </label>
+              <div className="pricefields">
+                <label>
+                  <span>Min (RM)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    data-f="min"
+                    value={min}
+                    onChange={(event) => update("min", event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Max (RM)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    data-f="max"
+                    value={max}
+                    onChange={(event) => update("max", event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="pills">
+                {[
+                  ["", "5", "Up to RM5"],
+                  ["5", "10", "RM5–RM10"],
+                  ["10", "20", "RM10–RM20"],
+                  ["20", "", "RM20+"],
+                ].map(([low, high, label]) => (
+                  <Button
+                    className={"pill" + (low === min && high === max ? " on" : "")}
+                    key={label}
+                    onClick={() => {
+                      const next = new URLSearchParams(params);
+                      next.delete("offset");
+                      if (low && (min !== low || max !== high)) next.set("min", low);
+                      else next.delete("min");
+                      if (high && (min !== low || max !== high)) next.set("max", high);
+                      else next.delete("max");
+                      setParams(next);
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </Disclosure>
+          </div>
+          <div className="fgrp mobile-only filter-actions">
+            <Button className="btn block" onClick={() => filterDrawer.current?.close()}>
+              Show {results.length} {results.length === 1 ? "result" : "results"}
+            </Button>
+          </div>
+        </dialog>
         <div id="results">
           <div className="toolbar">
             <b>
               {results.length} listings near {areaOf(data).short}
             </b>
-            <Button className="btn sec sm filter-toggle" onClick={() => setFilters(true)}>
+            <Button
+              className="btn sec sm filter-toggle"
+              aria-expanded={filters}
+              aria-controls="filters"
+              onClick={(event) => {
+                event.currentTarget.focus();
+                filterDrawer.current?.showModal();
+                setFilters(true);
+              }}
+            >
               Filters
             </Button>
             <label className="mute sm" htmlFor="sort">
@@ -557,7 +594,6 @@ export function Market() {
 }
 
 export function Item() {
-  const pickupHeading = useRef<HTMLHeadingElement>(null);
   const { id } = useParams(),
     { data, mode, dialog, run } = useUI(),
     navigate = useNavigate();
@@ -581,9 +617,7 @@ export function Item() {
   const ledger = listingLedger(listing, data.reservations);
   const live = listingStatus(listing, data.reservations) === "live";
   const tooLate = Date.now() > listingCutoff(listing) - POLICY.leadMin * 60_000;
-  const imgs = listing.photos.length
-    ? listing.photos
-    : [0, 1, 2].map((crop) => photo(listing.kind, crop));
+  const imgs = listing.photos;
   const related = browse(data, "", "all").filter((item) => item.id !== listing.id);
   const moreFromSeller = related.filter((item) => item.seller === listing.seller).slice(0, 4);
   const similar = related
@@ -600,6 +634,20 @@ export function Item() {
       ["pending", "confirmed"].includes(record.status),
   );
   const count = Math.min(qty, Math.max(1, ledger.avail));
+  function changeQuantity(delta: -1 | 1, control: HTMLButtonElement) {
+    const next = count + delta;
+    const disablesControl = delta === -1 ? next === 1 : next === ledger.avail;
+    if (disablesControl && document.activeElement === control) {
+      const opposite = control.parentElement?.querySelector<HTMLButtonElement>(
+        `[data-d="${-delta}"]`,
+      );
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body || document.activeElement === control)
+          opposite?.focus();
+      });
+    }
+    setQty(next);
+  }
   const chat = () => {
     void run("openThread", { sellerId: listing.seller, listingId: listing.id });
     navigate("?chat=" + listing.seller);
@@ -611,6 +659,7 @@ export function Item() {
       <Confirm
         title="Request this reservation?"
         action="Request reservation"
+        pendingLabel="Requesting…"
         submit={async () => {
           const result = await run("reserveListing", { id: listing.id, qty: count, requestId });
           if (result.ok) navigate("/reservation/" + result.value);
@@ -620,7 +669,7 @@ export function Item() {
         <dl className="deflist tight">
           <dt>Total</dt>
           <dd>{rm(listing.price * count)} · paid in person</dd>
-          <dt>Listing collection cutoff</dt>
+          <dt>Listing cutoff</dt>
           <dd>{formatDeadline(listingCutoff(listing))}</dd>
         </dl>
         <p>
@@ -628,13 +677,22 @@ export function Item() {
           you’ll get a 4-digit pickup code and your own pickup deadline, which may be earlier than
           the listing cutoff. The agreed price and pickup details are locked for this reservation.
         </p>
+        <div className="pickup-safety">
+          <div>
+            <svg className="ico sm" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3 2.5 20h19L12 3Z M12 9v4 M12 16v.1" />
+            </svg>
+            <h3>Food safety · Seller-declared, unverified</h3>
+          </div>
+          <p>At pickup, check the seal, printed date, and allergen label.</p>
+        </div>
       </Confirm>,
     );
   }
   return (
     <>
       <div className="crumbs">
-        <Link to="/market">Rescue</Link> › {catLabel(listing.cat)}
+        <Link to="/market">Find food</Link> › {catLabel(listing.cat)}
       </div>
       <article className="detail product-detail">
         <header className="product-heading">
@@ -642,75 +700,9 @@ export function Item() {
           <div className="d-price">
             <b>{rm(listing.price)}</b> <s>{rm(listing.orig)}</s>
           </div>
-          <Button
-            className="link pickup-jump"
-            onClick={() => {
-              pickupHeading.current?.focus({ preventScroll: true });
-              pickupHeading.current?.scrollIntoView({ block: "start" });
-            }}
-          >
-            View pickup details <span aria-hidden="true">↓</span>
-          </Button>
         </header>
-        <div className="product-gallery">
-          <div
-            role="group"
-            aria-label="Product photos"
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                event.preventDefault();
-                setGallery(
-                  (value) =>
-                    (value + imgs.length + (event.key === "ArrowRight" ? 1 : -1)) % imgs.length,
-                );
-              }
-            }}
-          >
-            <div className="gal-main">
-              <Picture src={imgs[gallery % imgs.length]} alt={listing.name} />
-              {imgs.length > 1 && (
-                <>
-                  <Button
-                    className="gal-nav l"
-                    aria-label="Previous image"
-                    onClick={() => setGallery((gallery + imgs.length - 1) % imgs.length)}
-                  >
-                    ‹
-                  </Button>
-                  <Button
-                    className="gal-nav r"
-                    aria-label="Next image"
-                    onClick={() => setGallery((gallery + 1) % imgs.length)}
-                  >
-                    ›
-                  </Button>
-                </>
-              )}
-              {!listing.photos.length && <span className="illus lg">Illustrative photo</span>}
-              <span className="gal-count">
-                {(gallery % imgs.length) + 1} / {imgs.length}
-              </span>
-            </div>
-            {imgs.length > 1 && (
-              <div className="thumbs">
-                {imgs.map((src, index) => (
-                  <Button
-                    className={index === gallery ? "on" : ""}
-                    aria-label={"Image " + (index + 1)}
-                    key={index}
-                    onClick={() => setGallery(index)}
-                  >
-                    <Picture src={src} />
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
         <section className="box pickup-panel" aria-labelledby="pickup-heading">
-          <h2 id="pickup-heading" ref={pickupHeading} tabIndex={-1}>
-            Reserve for pickup
-          </h2>
+          <h2 id="pickup-heading">Reserve for pickup</h2>
           <dl className="deflist tight pickup-facts">
             <dt>{dateWord(listing.expiryType)}</dt>
             <dd>
@@ -735,18 +727,6 @@ export function Item() {
             <dt className="pickup-wide">Instructions</dt>
             <dd className="pickup-wide">{listing.instr}</dd>
           </dl>
-          <div className="pickup-safety">
-            <div>
-              <svg className="ico sm" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3 2.5 20h19L12 3Z M12 9v4 M12 16v.1" />
-              </svg>
-              <h3>Food safety</h3> <Badge tone="y">Seller-declared · Not verified</Badge>
-            </div>
-            <p>
-              FreshSave does not inspect, test or certify food. Check the seal, printed date, and
-              allergen label at pickup.
-            </p>
-          </div>
           {myRequests.map((record) => (
             <Note key={record.id}>
               You reserved {record.qty} ·{" "}
@@ -777,7 +757,8 @@ export function Item() {
                     data-d="-1"
                     className="hbtn"
                     aria-label="Decrease quantity"
-                    onClick={() => setQty(Math.max(1, count - 1))}
+                    disabled={count <= 1}
+                    onClick={(event) => changeQuantity(-1, event.currentTarget)}
                   >
                     −
                   </Button>
@@ -789,7 +770,8 @@ export function Item() {
                     data-d="1"
                     className="hbtn"
                     aria-label="Increase quantity"
-                    onClick={() => setQty(Math.min(ledger.avail, count + 1))}
+                    disabled={count >= ledger.avail}
+                    onClick={(event) => changeQuantity(1, event.currentTarget)}
                   >
                     +
                   </Button>
@@ -808,6 +790,67 @@ export function Item() {
             </>
           )}
         </section>
+        <div className="product-gallery">
+          {imgs.length === 0 ? (
+            <div className="no-seller-photo">No seller photo</div>
+          ) : (
+            <div
+              role="group"
+              aria-label="Product photos"
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                  event.preventDefault();
+                  setGallery(
+                    (value) =>
+                      (value + imgs.length + (event.key === "ArrowRight" ? 1 : -1)) % imgs.length,
+                  );
+                }
+              }}
+            >
+              <div className="gal-main">
+                <Picture src={imgs[gallery % imgs.length]} alt={listing.name} />
+                {imgs.length > 1 && (
+                  <>
+                    <Button
+                      className="gal-nav l"
+                      aria-label="Previous image"
+                      onClick={() => setGallery((gallery + imgs.length - 1) % imgs.length)}
+                    >
+                      ‹
+                    </Button>
+                    <Button
+                      className="gal-nav r"
+                      aria-label="Next image"
+                      onClick={() => setGallery((gallery + 1) % imgs.length)}
+                    >
+                      ›
+                    </Button>
+                  </>
+                )}
+                {imgs.length > 1 && (
+                  <span className="gal-count">
+                    {(gallery % imgs.length) + 1} / {imgs.length}
+                  </span>
+                )}
+              </div>
+              {imgs.length > 1 && (
+                <div className="thumbs">
+                  {imgs.map((src, index) => (
+                    <Button
+                      className={index === gallery ? "on" : ""}
+                      aria-label={"Image " + (index + 1)}
+                      aria-pressed={index === gallery}
+                      key={index}
+                      onClick={() => setGallery(index)}
+                    >
+                      <Picture src={src} />
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="product-support">
           <section className="box">
             <h2>Description</h2>
@@ -827,8 +870,15 @@ export function Item() {
                   Seller profile
                 </Link>
                 {mode === "demo" && !own && (
-                  <Button className="btn sec" act="chat" onClick={chat}>
-                    Message (simulated)
+                  <Button
+                    className="btn sec"
+                    act="chat"
+                    onClick={(event) => {
+                      event.currentTarget.focus();
+                      chat();
+                    }}
+                  >
+                    Try demo chat
                   </Button>
                 )}
               </div>
@@ -881,12 +931,13 @@ export function Seller() {
           mode === "demo" && (
             <Button
               className="btn sec"
-              onClick={() => {
+              onClick={(event) => {
+                event.currentTarget.focus();
                 void run("openThread", { sellerId: store.id });
                 navigate("?chat=" + store.id);
               }}
             >
-              Message (simulated)
+              Try demo chat
             </Button>
           )
         }
@@ -922,9 +973,22 @@ export function Seller() {
 }
 
 export function Inbox({ sellerId, close }: { sellerId: string; close: () => void }) {
-  const { data, run } = useUI(),
-    navigate = useNavigate(),
-    loc = useLocation();
+  const { data, run } = useUI();
+  const [params, setParams] = useSearchParams();
+  const panel = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const element = panel.current;
+    if (!element) return;
+    const previous = document.activeElement;
+    element.showModal();
+    return () => {
+      element.close();
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    panel.current?.querySelector<HTMLButtonElement>("[data-act=closechat]")?.focus();
+  }, [sellerId]);
   const threads = Object.values(data.threads || {}),
     thread = threads.find((t) => t.sellerId === sellerId);
   async function send(event: FormEvent<HTMLFormElement>) {
@@ -934,19 +998,41 @@ export function Inbox({ sellerId, close }: { sellerId: string; close: () => void
     if ((await run("sendMessage", { sellerId, text })).ok) form.reset();
   }
   return (
-    <aside className="drawer open" aria-label="Messages (simulated)">
+    <dialog
+      ref={panel}
+      className="drawer"
+      aria-label="Demo messages"
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") return;
+        const controls = event.currentTarget.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled])",
+        );
+        const edge = event.shiftKey ? controls[0] : controls[controls.length - 1];
+        if (document.activeElement !== edge) return;
+        event.preventDefault();
+        (event.shiftKey ? controls[controls.length - 1] : controls[0])?.focus();
+      }}
+      onClick={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          event.clientX < event.currentTarget.getBoundingClientRect().left
+        )
+          close();
+      }}
+    >
       <div className="dh">
         <div className="t">
-          <b>{data.stores[sellerId]?.name || "Messages (simulated)"}</b>
-          <small>Demo only</small>
+          <b>{data.stores[sellerId]?.name || "Demo messages"}</b>
+          {data.stores[sellerId] && <small>Demo chat</small>}
         </div>
-        <Button className="hbtn" aria-label="Close messages" onClick={close}>
+        <Button act="closechat" className="hbtn" aria-label="Close messages" onClick={close}>
           ×
         </Button>
       </div>
-      <p className="simnote">
-        Simulated chat. Messages stay in this browser and replies are automatic.
-      </p>
       {thread ? (
         <>
           <div className="msgs" id="msgs">
@@ -985,7 +1071,11 @@ export function Inbox({ sellerId, close }: { sellerId: string; close: () => void
               <Button
                 className="thread"
                 key={t.sellerId}
-                onClick={() => navigate(loc.pathname + "?chat=" + t.sellerId)}
+                onClick={() => {
+                  const next = new URLSearchParams(params);
+                  next.set("chat", t.sellerId);
+                  setParams(next);
+                }}
               >
                 {data.stores[t.sellerId]?.name}
               </Button>
@@ -995,6 +1085,6 @@ export function Inbox({ sellerId, close }: { sellerId: string; close: () => void
           )}
         </div>
       )}
-    </aside>
+    </dialog>
   );
 }

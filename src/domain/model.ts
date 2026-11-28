@@ -63,6 +63,7 @@ export interface ProductRecord {
 export type StockUse = "consumed" | "discarded";
 export interface InventoryItem extends ProductRecord {
   purchased: string;
+  reservationId?: string;
   initial: number;
   status: "active" | StockUse;
   closedAt?: number | null;

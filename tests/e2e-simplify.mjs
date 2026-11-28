@@ -39,9 +39,8 @@ await b.hash('#/inventory?st=d1'); ok((await vis(b, '.tabs .tab.on')) === 1 && (
 // Scan
 await b.hash('#/scan')
 ok((await b.text('#main')).split('Simulated').length - 1 <= 2 && (await b.text('#main')).includes('Simulated scanning'), 'scan page states once that scanning is simulated')
-ok(!(await vis(b, 'input[name=sample]')), 'demo outcome choices are tucked away')
-await b.click('.demo-opts summary'); ok((await vis(b, 'input[name=sample]')) === 3, 'demo choices open on request')
-await b.eval(`document.querySelector('input[name=sample][value=milk]').click()`); await b.act('camon'); await b.act('capture'); await b.sleep(2200)
+eq(await vis(b, '[data-act=scan-sample]'), 3, 'clear, blurry and missing dates are directly selectable')
+await b.act('scan-sample', '[data-id="milk"]')
 ok(!(await b.has('.result .deflist')), 'confirm page no longer repeats the product details above the form')
 ok(!(await vis(b, '#res-date')), 'purchase date is collapsed on the confirm page')
 await b.eval(`const f=document.querySelector('#f-res'); document.querySelector('[data-b="res.ok"]').click(); f.requestSubmit()`); await b.sleep(400)

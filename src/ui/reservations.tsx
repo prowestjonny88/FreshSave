@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { photo } from "../data.js";
 import type { Reservation } from "../domain/model.ts";
-import { POLICY } from "../domain/time.ts";
+import { POLICY, storeTime } from "../domain/time.ts";
 import {
   Avatar,
   Badge,
@@ -68,18 +67,19 @@ function PickupCode({ r }: { r: Extract<Reservation, { status: "confirmed" }> })
   return (
     <div className="codebar">
       <div>
-        <div className="mute sm">Your pickup code – show it to the seller</div>
+        <div className="mute sm">Show this pickup code to the seller</div>
         <div className="code">{r.pin || "—"}</div>
       </div>
       <p className="mute sm">
-        Show the code to the seller at pickup. Reference <b>{r.ref}</b>
+        Collect by <b>{formatDeadline(r.collectBy)}</b>
       </p>
     </div>
   );
 }
 
 function Handover({ r }: { r: Reservation }) {
-  const { close, run, notify, mode } = useUI();
+  const { close, lockDialog, run, notify, mode } = useUI();
+  const codeField = useRef<HTMLInputElement>(null);
   const [code, setCode] = useState(""),
     [item, setItem] = useState(false),
     [paid, setPaid] = useState(false),
@@ -102,9 +102,17 @@ function Handover({ r }: { r: Reservation }) {
             setError({ field: "checks", message: "Tick both boxes to confirm the handover." });
             return;
           }
+          const unlock = lockDialog();
+          if (!unlock) return;
           setBusy(true);
-          const result = await run("completeHandover", { id: r.id, code, item, paid });
-          setBusy(false);
+          let currentDialog = true;
+          const result = await run("completeHandover", { id: r.id, code, item, paid }).finally(
+            () => {
+              currentDialog = unlock();
+              setBusy(false);
+            },
+          );
+          if (!currentDialog) return;
           if (result.ok) {
             close();
             notify("Handover recorded");
@@ -114,15 +122,14 @@ function Handover({ r }: { r: Reservation }) {
           } else {
             setError({ field: "code", message: result.error.message });
             setCode("");
-            setItem(false);
-            setPaid(false);
+            codeField.current?.focus();
           }
         }}
       >
         <p>Ask {r.buyerName} for the 4-digit pickup code shown in their reservation.</p>
         {mode === "demo" && r.sample && r.pin && (
           <Note danger>
-            Prototype hint · the sample buyer’s pickup code is <b>{r.pin}</b>.
+            Sample buyer’s pickup code: <b>{r.pin}</b>
           </Note>
         )}
         <Field
@@ -132,6 +139,7 @@ function Handover({ r }: { r: Reservation }) {
         >
           <input
             id="ho-code"
+            ref={codeField}
             inputMode="numeric"
             value={code}
             maxLength={4}
@@ -167,11 +175,11 @@ function Handover({ r }: { r: Reservation }) {
         </fieldset>
         <p className="mute sm">A matching pickup code records a handover in FreshSave.</p>
         <div className="macts">
-          <Button className="btn sec" onClick={close}>
+          <Button className="btn sec" disabled={busy} onClick={close}>
             Cancel
           </Button>
           <Button type="submit" className="btn sage" disabled={busy}>
-            Record handover
+            {busy ? "Recording…" : "Record handover"}
           </Button>
         </div>
       </form>
@@ -214,8 +222,7 @@ function ReservationActions({
 }) {
   const { dialog, run, data, mode } = useUI(),
     navigate = useNavigate();
-  const retailer = data.session?.user.role === "retailer",
-    terms = r.terms;
+  const terms = r.terms;
   const link = "/reservation/" + r.id;
   if (!detail && (!seller || !open(r))) {
     return (
@@ -260,6 +267,7 @@ function ReservationActions({
                 <Confirm
                   title="Accept this request?"
                   action="Accept"
+                  pendingLabel="Accepting…"
                   submit={() => run("acceptReservation", { id: r.id })}
                 >
                   <p>
@@ -267,7 +275,9 @@ function ReservationActions({
                     {rm(r.qty * terms.price)} in person.
                   </p>
                   <ul className="plainlist">
-                    <li>Set the units aside in the Clearance Basket.</li>
+                    <li>
+                      Hold {units(r.qty)} from the Clearance Basket for {r.buyerName}.
+                    </li>
                     <li>At pickup, ask the buyer for their 4-digit pickup code.</li>
                   </ul>
                 </Confirm>,
@@ -306,12 +316,13 @@ function ReservationActions({
             <Button
               className="btn sec"
               act="chat"
-              onClick={() => {
+              onClick={(event) => {
+                event.currentTarget.focus();
                 void run("openThread", { sellerId: terms.sellerId, listingId: r.listingId });
                 navigate("?chat=" + terms.sellerId);
               }}
             >
-              Contact seller (simulated)
+              Try demo chat
             </Button>
           )}
           {open(r) && (
@@ -352,7 +363,7 @@ function ReservationActions({
                 )
               }
             >
-              Prototype: simulate seller handover
+              Simulate seller handover
             </Button>
           )}
           {r.status === "completed" && !r.disputed && (
@@ -378,17 +389,6 @@ function ReservationActions({
                   }
                 >
                   Report a problem
-                </Button>
-              )}
-              {!retailer && (
-                <Button
-                  act="addfrom"
-                  data-id={r.id}
-                  onClick={() =>
-                    dialog(<FoodForm popup draft={{ ...terms, qty: r.qty, source: "rescue" }} />)
-                  }
-                >
-                  Add to My food
                 </Button>
               )}
             </>
@@ -429,12 +429,12 @@ export function ReservationList() {
       : ["confirmed", "pending", "completed", "closed"].find((key) =>
           rows.some((r) => inTab(r, key)),
         ) || "pending";
-  const displayed = rows
-    .filter((r) => inTab(r, tab))
-    .sort((a, b) => (open(a) && open(b) ? time(a) - time(b) : time(b) - time(a)));
   const next = !seller
     ? rows.filter((r) => r.status === "confirmed").sort((a, b) => a.collectBy - b.collectBy)[0]
     : undefined;
+  const displayed = rows
+    .filter((r) => inTab(r, tab) && r.id !== next?.id)
+    .sort((a, b) => (open(a) && open(b) ? time(a) - time(b) : time(b) - time(a)));
   return (
     <>
       <Heading
@@ -465,8 +465,7 @@ export function ReservationList() {
             </div>
           </div>
           <p>
-            Your pickup deadline <b>{formatDeadline(next.collectBy)}</b> · {next.terms.sellerName},{" "}
-            {next.terms.sellerArea}
+            {next.terms.sellerName}, {next.terms.sellerArea}
           </p>
           <PickupCode r={next} />
           <Link className="btn sm" to={"/reservation/" + next.id}>
@@ -475,6 +474,7 @@ export function ReservationList() {
         </section>
       )}
       <Tabs
+        scrollActive
         items={tabs.map(([key, label]) => ({
           label,
           active: tab === key,
@@ -500,7 +500,11 @@ export function ReservationList() {
               {displayed.map((r) => (
                 <tr key={r.id}>
                   <ProductCell
-                    item={r.terms}
+                    item={{
+                      ...r.terms,
+                      photo: data.listings.find((item) => item.id === r.listingId)?.photos[0],
+                    }}
+                    useCategoryPhoto={false}
                     to={"/reservation/" + r.id}
                     detail={
                       <>
@@ -544,7 +548,7 @@ export function ReservationList() {
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : next && tab === "confirmed" ? null : (
         <Empty
           title={rows.length ? "Nothing in this view." : "No reservations yet"}
           text={
@@ -566,7 +570,7 @@ export function ReservationList() {
 }
 
 export function ReservationDetail() {
-  const { data, mode } = useUI(),
+  const { data, dialog } = useUI(),
     { id } = useParams(),
     user = data.session?.user;
   const r = data.reservations.find((record) => record.id === id);
@@ -596,9 +600,9 @@ export function ReservationDetail() {
     r.status === "pending"
       ? (seller ? "Respond by " : "Seller must respond by ") + formatDeadline(r.respondBy)
       : r.status === "confirmed"
-        ? (seller ? "Pickup deadline: " : "Your pickup deadline: ") +
-          formatDeadline(r.collectBy) +
-          ". Pay in person at pickup."
+        ? seller
+          ? "Collect by " + formatDeadline(r.collectBy)
+          : "Pay in person at pickup."
         : r.status === "completed"
           ? r.disputed
             ? "The buyer reported a problem."
@@ -608,6 +612,26 @@ export function ReservationDetail() {
           : r.reason
             ? reasons[r.reason] || r.reason
             : "The units were released back to the listing.";
+  const pickupDetails = (
+    <>
+      <div className="seller">
+        <Avatar name={t.sellerName} />
+        <b>{t.sellerName}</b>
+      </div>
+      <dl className="deflist tight">
+        <dt>Address</dt>
+        <dd>{t.sellerArea}</dd>
+        <dt>Shop hours</dt>
+        <dd>
+          {formatTime(t.window.from)}–{formatTime(t.window.to)} daily
+        </dd>
+        <dt>Instructions</dt>
+        <dd>{t.instr}</dd>
+        <dt>Payment</dt>
+        <dd>In person at pickup.</dd>
+      </dl>
+    </>
+  );
   return (
     <div className="confirm">
       <div className="crumbs">
@@ -638,6 +662,30 @@ export function ReservationDetail() {
           <div className="mute">{description}</div>
         </div>
       </div>
+      {!seller && user?.role === "individual" && r.status === "completed" && !r.disputed && (
+        <div className="row-acts collected-actions">
+          {data.collectedFood ? (
+            <Link className="btn" to={"/inventory?item=" + data.collectedFood.id}>
+              View in My food
+            </Link>
+          ) : (
+            <Button
+              act="addfrom"
+              data-id={r.id}
+              onClick={() =>
+                dialog(
+                  <FoodForm
+                    popup
+                    draft={{ ...t, qty: r.qty, source: "rescue", reservationId: r.id }}
+                  />,
+                )
+              }
+            >
+              Add to My food
+            </Button>
+          )}
+        </div>
+      )}
       {!seller && r.status === "confirmed" && (
         <div className="box codebox">
           <PickupCode r={r} />
@@ -650,16 +698,9 @@ export function ReservationDetail() {
           expires.
         </div>
       )}
-      {seller && r.status === "confirmed" && mode === "demo" && r.sample && r.pin && (
-        <Note danger>Prototype hint for sample buyer: {r.pin}</Note>
-      )}
       {open(r) && (
         <div className="box deadline">
           <div>
-            <b>
-              {r.status === "pending" ? "Seller response due" : "Pickup deadline"}{" "}
-              {formatDeadline(time(r))}
-            </b>
             <Disclosure title="How this deadline works" className="flat">
               <p className="mute sm">
                 {r.status === "pending"
@@ -676,7 +717,7 @@ export function ReservationDetail() {
             Agreed terms <Badge>Locked at booking</Badge>
           </h3>
           <div className="srow">
-            <Picture src={listing?.photos[0] || photo(t.kind)} />
+            <Picture src={listing?.photos[0]} />
             <div>
               <b>{t.name}</b>
               <div className="mute sm">
@@ -697,6 +738,8 @@ export function ReservationDetail() {
             <dd>
               <Badge>{status(r)}</Badge>
             </dd>
+            <dt>Listing cutoff at booking</dt>
+            <dd>{formatDeadline(storeTime(t.window.until, t.window.to))}</dd>
             {seller && (
               <>
                 <dt>Buyer</dt>
@@ -711,28 +754,15 @@ export function ReservationDetail() {
             </Note>
           )}
         </div>
-        <div className="box">
-          <h3>Pickup</h3>
-          <div className="seller">
-            <Avatar name={t.sellerName} />
-            <b>{t.sellerName}</b>
+        {open(r) && (
+          <div className="box">
+            <h3>Pickup</h3>
+            {pickupDetails}
           </div>
-          <dl className="deflist tight">
-            <dt>Address</dt>
-            <dd>{t.sellerArea}</dd>
-            <dt>Collection window</dt>
-            <dd>
-              By {formatDate(t.window.until)} · {formatTime(t.window.from)}–
-              {formatTime(t.window.to)} daily
-            </dd>
-            <dt>Instructions</dt>
-            <dd>{t.instr}</dd>
-            <dt>Payment</dt>
-            <dd>In person at pickup.</dd>
-          </dl>
-        </div>
+        )}
       </div>
-      {!seller && (
+      {!open(r) && <Disclosure title="Booked pickup details">{pickupDetails}</Disclosure>}
+      {!seller && r.status === "confirmed" && (
         <div className="box safety">
           <h3>At pickup, check the food yourself</h3>
           <ul className="tips">

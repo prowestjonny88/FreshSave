@@ -382,7 +382,7 @@ function ListingAction({
   const expired = pastCollectionDate(l.expiry, l.expiryType, Date.now());
   const actionLabel =
     action === "move"
-      ? "Confirm units set aside"
+      ? "Confirm and publish"
       : action === "withdraw"
         ? "Withdraw listing"
         : expired
@@ -401,13 +401,17 @@ function ListingAction({
             title={
               action === "move" ? "Are the units in your Clearance Basket?" : actionLabel + "?"
             }
-            action={actionLabel}
+            action={
+              action === "move"
+                ? `Publish ${units(listingLedger(l, data.reservations).avail)}`
+                : actionLabel
+            }
             danger={action === "withdraw"}
             submit={() => run(command, { id: l.id, cancelOpen: action === "withdraw" })}
           >
             <p>
               {action === "move"
-                ? "Confirm that the sealed units are physically in your Clearance Basket."
+                ? "Confirm the units are in your Clearance Basket. Publishing makes them available for reservation."
                 : expired
                   ? "Remove expired units from sale and close this listing."
                   : "Return the remaining units to normal stock and close this listing."}
@@ -984,7 +988,12 @@ function ListingEditor({
               <p>
                 {units(+draft.qty)} of {batch.qty} received
               </p>
-              <p>Collect by {formatDate(draft.pickupUntil)}</p>
+              <p>
+                Listing cutoff: {formatDate(draft.pickupUntil)}, {formatTime(draft.pickTo)}
+              </p>
+              <p>
+                Pickup hours: {formatTime(draft.pickFrom)}–{formatTime(draft.pickTo)} daily
+              </p>
             </div>
           </div>
           <Note danger>
@@ -1307,7 +1316,6 @@ function ListingEditor({
               <Field
                 id="wz-photos"
                 label="Product photos (up to 4)"
-                hint="Without a photo, buyers see an illustrative picture."
               >
                 <div className="upl">
                   {draft.photos.map((src, i) => (

@@ -2,6 +2,7 @@ import {
   cloneElement,
   isValidElement,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type AriaAttributes,
@@ -10,7 +11,7 @@ import {
 } from "react";
 import { Link, useSearchParams } from "react-router";
 import { CATEGORIES, photo, RESCUE_CATS, catLabel } from "../data.js";
-import type { Listing, Store, UnitLedger } from "../domain/model.ts";
+import type { Listing, Notification, Store, UnitLedger } from "../domain/model.ts";
 import type { DateType } from "../domain/time.ts";
 import { STORE_ZONE, daysUntil, formatDeadline, storeTime } from "../domain/time.ts";
 import type { Result } from "../services/contracts.ts";
@@ -37,6 +38,18 @@ export const formatTime = (value: string) =>
 export { formatDeadline } from "../domain/time.ts";
 export const listingCutoff = (l: Listing) => storeTime(l.pickupUntil, l.pickTo);
 export const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
+export function notificationCopy({ type, text, sub }: Notification) {
+  if (type !== "expiry") return { title: text, detail: sub };
+  const matched = text.match(/^(.+) expires (?:today|tomorrow|in \d+ days)$/);
+  if (!matched) return { title: text, detail: sub };
+  const packedDate = sub.match(/^Date on pack · (\d{4}-\d{2}-\d{2})$/);
+  return {
+    title: matched[1],
+    detail: packedDate
+      ? "Date on pack: " + formatDate(packedDate[1])
+      : sub.replace(/^\d+-day in-app reminder(?: \([^)]*\))? · /, ""),
+  };
+}
 export const initials = (name: string) =>
   name
     .trim()
@@ -50,10 +63,41 @@ export function Button({
   act,
   className = "btn",
   children,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+  onPointerLeave,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { act?: string }) {
   return (
-    <button className={className} type="button" data-act={act} {...props}>
+    <button
+      className={className}
+      type="button"
+      data-act={act}
+      {...props}
+      onPointerDown={(event) => {
+        onPointerDown?.(event);
+        if (
+          !event.defaultPrevented &&
+          event.isPrimary &&
+          event.button === 0 &&
+          !event.currentTarget.disabled
+        )
+          event.currentTarget.dataset.pressed = "true";
+      }}
+      onPointerUp={(event) => {
+        delete event.currentTarget.dataset.pressed;
+        onPointerUp?.(event);
+      }}
+      onPointerCancel={(event) => {
+        delete event.currentTarget.dataset.pressed;
+        onPointerCancel?.(event);
+      }}
+      onPointerLeave={(event) => {
+        delete event.currentTarget.dataset.pressed;
+        onPointerLeave?.(event);
+      }}
+    >
       {children}
     </button>
   );
@@ -163,7 +207,11 @@ export function Menu({ children }: { children: ReactNode }) {
       if (event.target instanceof Node && !ref.current?.contains(event.target)) close();
     }
     function escape(event: KeyboardEvent) {
-      if (event.key === "Escape") close();
+      const menu = ref.current;
+      if (event.key !== "Escape" || event.defaultPrevented || !menu?.open) return;
+      const inside = menu.contains(document.activeElement);
+      close();
+      if (inside) menu.querySelector("summary")?.focus();
     }
     document.addEventListener("click", outside);
     document.addEventListener("keydown", escape);
@@ -199,7 +247,10 @@ export function Menu({ children }: { children: ReactNode }) {
       <div
         className="more-m"
         onClick={() => {
-          if (ref.current) ref.current.open = false;
+          const menu = ref.current;
+          if (!menu) return;
+          if (menu.contains(document.activeElement)) menu.querySelector("summary")?.focus();
+          menu.open = false;
         }}
       >
         {children}
@@ -209,7 +260,9 @@ export function Menu({ children }: { children: ReactNode }) {
 }
 export function Tabs({
   items,
+  scrollActive = false,
 }: {
+  scrollActive?: boolean;
   items: {
     label: string;
     active: boolean;
@@ -219,8 +272,20 @@ export function Tabs({
     id?: string;
   }[];
 }) {
+  const strip = useRef<HTMLDivElement>(null);
+  const activeLabel = items.find((item) => item.active)?.label;
+  useLayoutEffect(() => {
+    const row = strip.current;
+    const active = row?.querySelector(".tab.on");
+    if (!scrollActive || !row || !active || row.scrollWidth <= row.clientWidth) return;
+    const { left, right } = active.getBoundingClientRect();
+    const rowLeft = row.getBoundingClientRect().left;
+    const rowRight = rowLeft + row.clientWidth;
+    if (left < rowLeft) row.scrollLeft += left - rowLeft;
+    else if (right > rowRight) row.scrollLeft += right - rowRight;
+  }, [activeLabel, scrollActive]);
   return (
-    <div className="tabs">
+    <div className="tabs" ref={strip}>
       {items.map((item) => {
         const cls = "tab" + (item.active ? " on" : "");
         const text = (
@@ -243,6 +308,7 @@ export function Tabs({
             key={item.label}
             className={cls}
             onClick={item.click}
+            aria-pressed={item.active}
             data-t={item.id}
             act={item.id ? "bttab" : undefined}
           >
@@ -386,47 +452,64 @@ export function Confirm({
   title,
   children,
   action,
+  pendingLabel = "Working…",
   submit,
   danger,
 }: {
   title: string;
   children: ReactNode;
   action: string;
+  pendingLabel?: string;
   submit: () => Promise<Result<unknown> | undefined>;
   danger?: boolean;
 }) {
-  const { close } = useUI();
+  const { close, lockDialog } = useUI();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const status = useRef<HTMLSpanElement>(null);
+  const alert = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    if (busy) status.current?.focus();
+    else if (error) alert.current?.focus();
+  }, [busy, error]);
   return (
     <>
       <h3 id="m-title">{title}</h3>
       <div className="mbody">{children}</div>
       {error && (
-        <p role="alert" className="hot">
+        <p role="alert" className="hot" tabIndex={-1} ref={alert}>
           {error}
         </p>
       )}
       <div className="macts">
-        <Button className="btn sec" act="mclose" onClick={close}>
+        <span className="sr-only" role="status" tabIndex={-1} ref={status}>
+          {busy ? pendingLabel : ""}
+        </span>
+        <Button className="btn sec" act="mclose" disabled={busy} onClick={close}>
           Cancel
         </Button>
         <Button
           act="mok"
-          className={"btn " + (danger ? "danger" : "sage")}
+          className={"btn " + (danger ? "danger" : "sage") + (busy ? " is-pending" : "")}
           disabled={busy}
           onClick={async () => {
+            const unlock = lockDialog();
+            if (!unlock) return;
+            setError("");
             setBusy(true);
             try {
               const result = await submit();
               if (result && !result.ok) setError(result.error.message);
-              else close();
+              else if (unlock()) close();
+            } catch {
+              setError("Could not complete the action. Try again.");
             } finally {
+              unlock();
               setBusy(false);
             }
           }}
         >
-          {action}
+          {busy ? pendingLabel : action}
         </Button>
       </div>
     </>
@@ -470,15 +553,17 @@ export function ProductCell({
   item,
   to,
   detail,
+  useCategoryPhoto = true,
 }: {
   item: { name: string; kind: string; cat?: string; photo?: string | null };
   to?: string;
   detail?: ReactNode;
+  useCategoryPhoto?: boolean;
 }) {
   return (
     <td className="pc">
       <div className="pcell">
-        <Picture src={item.photo || photo(item.kind, 0, 200)} />
+        <Picture src={item.photo || (useCategoryPhoto ? photo(item.kind, 0, 200) : undefined)} />
         <div>
           {to ? (
             <Link to={to}>
@@ -535,8 +620,11 @@ export function Card({
   const contents = (
     <>
       <div className="im">
-        <Picture src={photos[0] || photo(listing.kind)} alt={name} loading="lazy" />
-        {!photos.length && <span className="illus">Illustrative photo</span>}
+        {photos[0] ? (
+          <Picture src={photos[0]} alt={name} loading="lazy" />
+        ) : (
+          <span className="no-seller-photo">No seller photo</span>
+        )}
       </div>
       <div className="bd">
         <div className="nm">{name}</div>
@@ -576,22 +664,37 @@ export function Card({
 }
 export function DateBadge({ expiry, type }: { expiry: string; type: DateType }) {
   const days = daysUntil(expiry, Date.now());
+  const pastUseBy = days < 0 && type === "use-by";
   return (
-    <div className="datecell">
+    <div className="datecell printed-date-cell">
+      <span className="dl">
+        {dateWord(type)} {formatDate(expiry)}
+      </span>
       <Badge
-        tone={days < 0 ? "r solid" : days <= 1 ? "r" : days <= 3 ? "o" : days <= 7 ? "y" : "g"}
+        tone={
+          pastUseBy
+            ? "r solid"
+            : days < 0
+              ? "o"
+              : days <= 1
+                ? "r"
+                : days <= 3
+                  ? "o"
+                  : days <= 7
+                    ? "y"
+                    : "g"
+        }
       >
         {days < 0
-          ? "Past date"
+          ? pastUseBy
+            ? "Past use-by date"
+            : "Past best-before date"
           : days === 0
             ? "Expires today"
             : days === 1
               ? "Expires tomorrow"
               : days + " days left"}
       </Badge>
-      <span className="dl">
-        {dateWord(type)} {formatDate(expiry)}
-      </span>
     </div>
   );
 }

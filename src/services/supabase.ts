@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { LOCATIONS } from "../data.js";
-import type { CatalogueItem, Session } from "../domain/model.ts";
+import type { CatalogueItem, InventoryItem, Session } from "../domain/model.ts";
 import {
   emptyView,
   invalid,
@@ -146,7 +146,46 @@ export async function createSupabaseServices(url: string, key: string): Promise<
       },
     });
     if (error) throw error;
-    return { ...emptyView(), ...(data as Partial<ViewData>), recent };
+    const view = { ...emptyView(), ...(data as Partial<ViewData>), recent };
+    if (
+      query.page === "reservation" &&
+      view.reservations.some(
+        (r) => r.id === query.id && r.status === "completed" && r.buyerId === view.session?.user.id,
+      )
+    ) {
+      const { data: saved, error: lookupError } = await client
+        .from("inventory")
+        .select("id, status:details->>status")
+        .eq("details->>reservationId", query.id!)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (saved) view.collectedFood = saved as Pick<InventoryItem, "id" | "status">;
+    }
+    const selected = query.page === "inventory" ? query.params?.get("item") : null;
+    if (
+      selected &&
+      /^[0-9a-f-]{36}$/i.test(selected) &&
+      !view.inventory.some((item) => item.id === selected)
+    ) {
+      const { data: item, error: lookupError } = await client
+        .from("inventory")
+        .select("id, owner, quantity, expiry, date_type, purchased, added_at, details")
+        .eq("id", selected)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (item)
+        view.inventory.push({
+          ...item.details,
+          id: item.id,
+          owner: item.owner,
+          qty: item.quantity,
+          expiry: item.expiry,
+          expiryType: item.date_type,
+          purchased: item.purchased,
+          addedAt: Date.parse(item.added_at),
+        } as InventoryItem);
+    }
+    return view;
   }
 
   async function loadedSession(): Promise<Session> {
@@ -325,6 +364,13 @@ export async function createSupabaseServices(url: string, key: string): Promise<
         case "saveFood": {
           const food = input as Commands["saveFood"]["input"];
           const photo = food.photo ? await uploadPhoto(food.photo, uploaded) : undefined;
+          if (food.reservationId) {
+            const { data, error } = await client.rpc("freshsave_save_collected_food", {
+              input: { ...food, photo },
+            });
+            if (error) throw error;
+            return data;
+          }
           return await rpc(name, { ...food, photo });
         }
         case "offerBatch": {

@@ -21,6 +21,15 @@ for (const role of ['individual', 'retailer']) {
   for (const w of [1440, 1024, 768, 390, 320]) {
     const b = await session({ width: w, height: w === 320 ? 740 : w === 390 ? 844 : 900 })
     await b.login(role === 'individual' ? 'aisyah@freshsave.my' : 'pakdin@freshsave.my')
+    if (w === 1440 || w === 390) {
+      const selector = w === 1440 ? '#nav' : '#bnav'
+      await b.hash('#/reservations?tab=confirmed')
+      const labels = role === 'retailer'
+        ? ['Store today', 'Stock', 'Listings', 'Reservations']
+        : ['Today', 'My food', 'Find food', 'Reservations']
+      eq(await b.eval(`return [...document.querySelectorAll('${selector} > a > span')].map(label => label.textContent)`), labels, `${role} @${w}px: navigation uses four destination labels`)
+      eq(await b.eval(`return [...document.querySelectorAll('${selector} [aria-current="page"]')].map(link => link.getAttribute('href'))`), ['#/reservations'], `${role} @${w}px: Reservations is the only current destination`)
+    }
     const bad = []
     for (const p of PAGES[role]) {
       await b.hash(p); await b.sleep(150)
@@ -56,18 +65,43 @@ for (const role of ['individual', 'retailer']) {
       await b.hash('#/item/l1')
       ok(await b.eval(`
         const top = selector => document.querySelector(selector).getBoundingClientRect().top;
-        return top('.product-heading') < top('.product-gallery') && top('.pickup-facts') < top('[data-act=reserve]')
-          && top('.pickup-safety') < top('[data-act=reserve]') && top('[data-act=reserve]') < top('.product-support');`), 'phone product leads with title and keeps pickup and safety before Reserve')
+        return top('.product-heading') < top('.pickup-facts') && top('.pickup-facts') < top('[data-act=reserve]')
+          && top('[data-act=reserve]') < top('.product-gallery');`), 'phone shows pickup facts and Reserve before the gallery')
     }
     if (role === 'individual' && w <= 390) {
       await b.hash('#/item/l1')
-      await b.eval(`const jump = [...document.querySelectorAll('#main button')].find(button => button.textContent.includes('View pickup details')); jump.focus();`)
-      await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' })
-      await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
-      await b.sleep(450)
-      ok(await b.eval(`const heading = document.querySelector('#pickup-heading'); const rect = heading.getBoundingClientRect(); return document.activeElement === heading && rect.top >= 0 && rect.bottom <= document.querySelector('#bnav').getBoundingClientRect().top && location.hash === '#/item/l1'`), `@${w}px: pickup link scrolls and moves keyboard focus without changing the route`)
+      ok(await b.eval(`const rect = document.querySelector('#pickup-heading').getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= document.querySelector('#bnav').getBoundingClientRect().top`), `@${w}px: pickup details are immediately visible`)
       await b.eval(`const reserve = document.querySelector('[data-act=reserve]'); reserve.scrollIntoView({block:'center',behavior:'instant'});`)
       ok(await b.eval(`const reserve = document.querySelector('[data-act=reserve]'); const rect = reserve.getBoundingClientRect(); return rect.bottom < document.querySelector('#bnav').getBoundingClientRect().top && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('button') === reserve`), `@${w}px: Reserve is reachable above the fixed bottom navigation`)
+      const unread = w === 320 ? 123 : 22
+      await b.eval(`
+        const key = 'freshsave-app-v2';
+        const state = JSON.parse(localStorage.getItem(key));
+        const sample = state.notifs.find(notice => notice.user === state.session);
+        for (const notice of state.notifs) notice.unread = false;
+        state.notifs.push(...Array.from({length: ${unread}}, (_, index) => ({ ...sample, id: 'badge-test-' + index, unread: true })));
+        localStorage.setItem(key, JSON.stringify(state));`)
+      await b.reload()
+      ok(await b.eval(`
+        const button = document.querySelector('[data-act=npop]');
+        const badge = button.querySelector('.dot');
+        const count = badge.getBoundingClientRect();
+        const bell = button.getBoundingClientRect();
+        const account = document.querySelector('[data-act=mpop]').getBoundingClientRect();
+        return count.left >= bell.left && count.right <= bell.right && count.right < account.left
+          && badge.textContent.trim() === '${unread > 99 ? '99+' : unread}'
+          && button.getAttribute('aria-label') === 'Notifications, ${unread} unread';`), `@${w}px: ${unread} unread notifications fit without overlapping the account button`)
+      await b.hash('#/market?browse=1')
+      await b.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+      await b.click('.filter-toggle')
+      ok(await b.eval(`const drawer = document.querySelector('#filters'); return drawer.matches(':modal') && drawer.contains(document.activeElement)`), `@${w}px: opening filters moves focus into a modal`)
+      await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+      await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+      ok(await b.eval(`return document.querySelector('#filters').contains(document.activeElement)`), `@${w}px: Tab stays in filters`)
+      await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await b.sleep(150)
+      ok(await b.eval(`return !document.querySelector('#filters').open && document.activeElement.matches('.filter-toggle')`), `@${w}px: Escape closes filters and restores focus`)
     }
     ok(b.errors.length === 0, `${role} @${w}px: no JS errors` + (b.errors.length ? ' ' + b.errors[0] : ''))
     await b.close()
