@@ -28,6 +28,10 @@ The retailer has an unchecked **Test Sealed Crackers** batch. Open **Stock**, of
 
 Run `pnpm db:reset` to rebuild the local database from the migrations and seed. This clears the current FreshSave database. Run `pnpm exec supabase stop --project-id freshsave-local` to stop this project.
 
+## Private hosted staging
+
+Use a separate Supabase project and a protected Vercel preview. See [the staging runbook](docs/staging.md) for Auth settings, test accounts, and the release checks.
+
 ## How the code is organized
 
 - `src/App.tsx` defines hash routes and role-specific navigation. React screens live in `src/ui`.

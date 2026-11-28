@@ -29,6 +29,13 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
     [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const demoRecovery = page === "forgot" && mode === "demo";
+  const linkStatus = page === "login" ? new URLSearchParams(location.search).get("link") : null;
+  const linkError =
+    linkStatus === "invalid"
+      ? "This email link has expired or was opened in a different browser. Try logging in or request a new reset link."
+      : linkStatus === "profile"
+        ? "Your email was confirmed. Log in to finish setting up your profile."
+        : "";
   useEffect(() => {
     if (
       data.session && // Keep the new-account destination from the submit handler.
@@ -64,12 +71,15 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
       return;
     }
     if (page === "forgot") {
+      setBusy(true);
+      setError("");
       const result = await run("resetPassword", { email });
       if (result.ok) setSent(true);
       else setError(result.error.message);
+      setBusy(false);
       return;
     }
-    if (!fields.has("consent")) {
+    if (mode === "demo" && !fields.has("consent")) {
       setError("Please confirm to continue.");
       return;
     }
@@ -84,8 +94,10 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
       store: get("store"),
       address: get("address"),
     });
-    if (result.ok) navigate("/dashboard", { replace: true });
-    else setError(result.error.message);
+    if (result.ok) {
+      if (result.value) navigate("/dashboard", { replace: true });
+      else setSent(true);
+    } else setError(result.error.message);
     setBusy(false);
   }
   const field = (name: string, label: string, type = "text") => (
@@ -121,14 +133,16 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
       </aside>
       <section className="auth-main">
         <div className="auth-card">
-          <div className="protonote">
-            <span>
-              Sample sellers are fictional.{" "}
-              <Link className="link" to="/about">
-                About FreshSave
-              </Link>
-            </span>
-          </div>
+          {mode === "demo" && (
+            <div className="protonote">
+              <span>
+                Sample sellers are fictional.{" "}
+                <Link className="link" to="/about">
+                  About FreshSave
+                </Link>
+              </span>
+            </div>
+          )}
           <h1>
             {page === "login"
               ? "Log in"
@@ -169,32 +183,47 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
             <Note danger>Demo only. No email is sent and passwords can’t be recovered.</Note>
           )}
           {demoRecovery ? null : sent ? (
-            <Note>If this account exists, check the local mail inbox for reset instructions.</Note>
+            <div role="status">
+              <Note>
+                {page === "register"
+                  ? "Check your email to confirm your account. Open the link in this browser."
+                  : "If this account exists, check your email for reset instructions."}
+              </Note>
+            </div>
           ) : (
             <form id={"f-" + page} noValidate onSubmit={submit}>
               {page === "register" && (
                 <>
-                  <p className="mute">Choose how you’ll use FreshSave.</p>
-                  <div className="roles" role="radiogroup" aria-label="Account role">
-                    {(["individual", "retailer"] as const).map((value) => (
-                      <Button
-                        key={value}
-                        act="role"
-                        data-r={value}
-                        className={"role" + (value === role ? " on" : "")}
-                        role="radio"
-                        aria-checked={value === role}
-                        onClick={() => setRole(value)}
-                      >
-                        <b>{value === "individual" ? "Individual" : "Retailer"}</b>
-                        <small>
-                          {value === "individual"
-                            ? "Track food at home and reserve surplus."
-                            : "Record stock and offer sealed food."}
-                        </small>
-                      </Button>
-                    ))}
-                  </div>
+                  {mode === "supabase" && (
+                    <p className="mute">
+                      Create a buyer account. FreshSave sets up retailer accounts separately.
+                    </p>
+                  )}
+                  {mode === "demo" && (
+                    <>
+                      <p className="mute">Choose how you’ll use FreshSave.</p>
+                      <div className="roles" role="radiogroup" aria-label="Account role">
+                        {(["individual", "retailer"] as const).map((value) => (
+                          <Button
+                            key={value}
+                            act="role"
+                            data-r={value}
+                            className={"role" + (value === role ? " on" : "")}
+                            role="radio"
+                            aria-checked={value === role}
+                            onClick={() => setRole(value)}
+                          >
+                            <b>{value === "individual" ? "Individual" : "Retailer"}</b>
+                            <small>
+                              {value === "individual"
+                                ? "Track food at home and reserve surplus."
+                                : "Record stock and offer sealed food."}
+                            </small>
+                          </Button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   {field("name", role === "retailer" ? "Contact person name" : "Full name")}
                   {role === "retailer" && field("store", "Store name")}
                 </>
@@ -239,14 +268,16 @@ export function Auth({ page }: { page: "login" | "register" | "forgot" }) {
                       </Note>
                     </>
                   )}
-                  <Check id="a-consent" name="consent">
-                    I understand this is a local test environment and I’ll use test data.
-                  </Check>
+                  {mode === "demo" && (
+                    <Check id="a-consent" name="consent">
+                      I understand this is a local test environment and I’ll use test data.
+                    </Check>
+                  )}
                 </>
               )}
-              {error && (
+              {(error || linkError) && (
                 <div id="loginerr" className="formerr" role="alert">
-                  {error}
+                  {error || linkError}
                 </div>
               )}
               <Button disabled={busy} type="submit" className="btn block">

@@ -25,12 +25,6 @@ insert into public.stores(id,name,address,x,y) values
   ('01000000-0000-4000-8000-000000000002','FreshSave Test Pantry','100 Local Test Lane, Bangsar',0.4,0.3)
 on conflict (id) do nothing;
 
-insert into public.catalogue(barcode,name,category,kind) values
-  ('9556041610018','Dutch Lady Full Cream Milk 1L','dairy','milk'),
-  ('9556001062048','Milo Activ-Go Chocolate Malt Powder 1kg','pantry','milo'),
-  ('9556570310120','Gardenia Original Classic Bread 400g','bakery','bread')
-on conflict (owner,barcode) do nothing;
-
 insert into public.batches(id,owner,quantity,expiry,date_type,recorded,verification,counted,details) values
   ('02000000-0000-4000-8000-000000000001','01000000-0000-4000-8000-000000000002',1,
     freshsave_private.shop_day(now())+5,'best-before',freshsave_private.shop_day(now()),'listed',1,

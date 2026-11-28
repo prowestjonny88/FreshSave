@@ -17,3 +17,4 @@ Each e2e script starts a fresh browser profile and prints PASS/FAIL lines; a non
 
 - `pnpm test:db` runs PostgreSQL tests against the local stack, including the pickup-window calculation and repeated reservation expiry.
 - `pnpm test:e2e:supabase` verifies a last-unit race, a replayed request, reservation privacy, and a pickup across independent browser sessions. Start Vite in Supabase mode, reset the disposable FreshSave database, and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in the test shell to match the running app. This suite writes and closes test listings, so use the local fixtures.
+- `pnpm test:e2e:supabase:auth` checks email confirmation, password recovery, and an invalid callback in Chromium. Use a disposable local stack with `auth.email.enable_confirmations = true`, set `auth.site_url` to match `E2E_BASE_URL`, and set `E2E_MAILPIT_URL` if the test inbox uses a port other than `55424`.
