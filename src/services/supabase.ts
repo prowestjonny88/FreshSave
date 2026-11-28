@@ -13,6 +13,7 @@ import {
   type ViewData,
   type ViewQuery,
 } from "./contracts.ts";
+import { supabaseEndpoint } from "./supabase-config.ts";
 
 const codes: Record<string, Failure> = {
   FS001: "invalid",
@@ -49,25 +50,19 @@ function translate(error: unknown): RequestError {
     return new RequestError(
       code,
       code === "connection"
-        ? "Could not reach local Supabase. Check that the local stack is running and retry."
+        ? "Could not reach FreshSave’s database. Check your connection and retry."
         : error.message,
       field,
     );
   }
   return new RequestError(
     "connection",
-    "Could not reach local Supabase. Check that the local stack is running and retry.",
+    "Could not reach FreshSave’s database. Check your connection and retry.",
   );
 }
 
 export async function createSupabaseServices(url: string, key: string): Promise<Services> {
-  if (!url || !key || key.startsWith("sb_secret_"))
-    throw new Error(
-      "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for the local Supabase instance.",
-    );
-  const target = new URL(url);
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(target.hostname))
-    throw new Error("FreshSave Supabase mode requires a local API URL.");
+  const target = supabaseEndpoint(url, key);
   let keep = !sessionStorage.getItem("freshsave-shared-tab");
   const sessionStorageAdapter = {
     getItem: (name: string) => sessionStorage.getItem(name) ?? localStorage.getItem(name),
@@ -93,20 +88,9 @@ export async function createSupabaseServices(url: string, key: string): Promise<
   const listeners = new Set<() => void>();
   const changed = () => listeners.forEach((listener) => listener());
   let recovery = false;
-  const params = new URLSearchParams(location.search),
-    code = params.get("code");
-  if (code) {
-    const result = await client.auth.exchangeCodeForSession(code);
-    if (result.error) throw new Error("The password reset link is invalid or expired.");
-    recovery = true;
-    params.delete("code");
-    history.replaceState(
-      null,
-      "",
-      location.pathname + (params.size ? "?" + params : "") + "#/recover",
-    );
-  }
   client.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") recovery = true;
+    if (event === "SIGNED_OUT") recovery = false;
     if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") queueMicrotask(changed);
   });
   let area: string | null = null;
@@ -189,13 +173,29 @@ export async function createSupabaseServices(url: string, key: string): Promise<
   }
 
   async function loadedSession(): Promise<Session> {
-    const data = await view({ page: "login" });
-    if (!data.session)
-      throw new RequestError(
-        "invalid",
-        "This account has no FreshSave profile. Register through FreshSave or reset the local fixtures.",
-      );
-    return data.session;
+    const existing = (await view({ page: "login" })).session;
+    if (existing) return existing;
+    const { data, error } = await client.auth.getUser();
+    if (error) throw error;
+    const details = data.user?.user_metadata.freshsave_profile;
+    if (
+      data.user?.email_confirmed_at &&
+      typeof details?.name === "string" &&
+      typeof details?.loc === "string"
+    ) {
+      try {
+        await rpc("setupProfile", { name: details.name, loc: details.loc, role: "individual" });
+      } catch (error) {
+        if (!(error && typeof error === "object" && "code" in error && error.code === "23505"))
+          throw error;
+      }
+      const created = (await view({ page: "login" })).session;
+      if (created) return created;
+    }
+    throw new RequestError(
+      "invalid",
+      "This account has no FreshSave profile. Contact the person who set up your access.",
+    );
   }
 
   async function signedPhoto(path?: string | null): Promise<string | undefined> {
@@ -256,30 +256,20 @@ export async function createSupabaseServices(url: string, key: string): Promise<
             !LOCATIONS.some((location) => location.id === fields.loc)
           )
             invalid("Enter a name, an area and a password with at least 8 characters.");
-          if (
-            fields.role === "retailer" &&
-            (fields.store.trim().length < 2 || fields.address.trim().length < 8)
-          )
-            invalid("Enter the store name and full pickup address.");
+          if (fields.role !== "individual")
+            throw new RequestError("forbidden", "Retailer accounts are set up by FreshSave.");
           keep = true;
           sessionStorage.removeItem("freshsave-shared-tab");
           const { data, error } = await client.auth.signUp({
             email: fields.email.trim().toLowerCase(),
             password: fields.password,
+            options: {
+              emailRedirectTo: location.origin + location.pathname,
+              data: { freshsave_profile: { name: fields.name.trim(), loc: fields.loc } },
+            },
           });
           if (error) throw error;
-          if (!data.session)
-            invalid(
-              "Sign up could not start a local session. Use a new test email and check local Auth settings.",
-            );
-          await rpc("setupProfile", {
-            name: fields.name,
-            role: fields.role,
-            loc: fields.loc,
-            store: fields.store,
-            address: fields.address,
-          });
-          return await loadedSession();
+          return data.session ? await loadedSession() : null;
         }
         case "changePassword": {
           const fields = input as Commands["changePassword"]["input"];
@@ -390,6 +380,27 @@ export async function createSupabaseServices(url: string, key: string): Promise<
       if (uploaded.length) await bucket.remove(uploaded).catch(() => undefined);
       throw error;
     }
+  }
+
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code");
+  if (code || params.has("error_code")) {
+    let path = "#/login?link=invalid";
+    if (code) {
+      const result = await client.auth.exchangeCodeForSession(code);
+      if (!result.error) {
+        path = recovery ? "#/recover" : "#/dashboard";
+        if (!recovery) {
+          try {
+            await loadedSession();
+          } catch {
+            await client.auth.signOut({ scope: "local" });
+            path = "#/login?link=profile";
+          }
+        }
+      }
+    }
+    history.replaceState(null, "", location.pathname + path);
   }
 
   return {

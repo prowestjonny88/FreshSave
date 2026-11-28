@@ -11,6 +11,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "node tests/run-browser.mjs",
     "test:e2e:supabase": "node tests/e2e-supabase.mjs",
+    "test:e2e:supabase:auth": "node tests/supabase-auth.e2e.mjs",
     "typecheck": "tsc --noEmit",
     "db:start": "supabase start --exclude studio,realtime,edge-runtime,imgproxy,logflare,vector,postgres-meta",
     "db:reset": "supabase db reset --local",

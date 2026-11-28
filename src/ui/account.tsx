@@ -839,7 +839,7 @@ export function About() {
             {[
               [
                 "Accounts",
-                mode === "demo" ? "Local only" : "Local Supabase",
+                mode === "demo" ? "Local only" : "Shared accounts",
                 mode === "demo"
                   ? "Demo accounts and records are stored in this browser."
                   : "Local test accounts share a database and can complete a reservation from separate browsers.",

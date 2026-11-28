@@ -80,7 +80,7 @@ export interface Commands {
       store: string;
       address: string;
     },
-    Session
+    Session | null
   >;
   resetPassword: Command<{ email: string }>;
   changePassword: Command<{ current: string; password: string }>;

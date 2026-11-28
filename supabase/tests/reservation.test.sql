@@ -1,7 +1,10 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(12);
+select plan(15);
+
+select ok(exists(select 1 from cron.job where jobname = 'freshsave-reservation-expiry'
+  and schedule = '* * * * *' and active), 'reservation expiry is scheduled every minute');
 
 select is(
   freshsave_private.pickup_deadline(
@@ -73,6 +76,19 @@ set local "request.jwt.claim.sub" = '01000000-0000-4000-8000-000000000003';
 select is(
   (select count(*) from public.inventory where details->>'reservationId' = '04000000-0000-4000-8000-000000000001'),
   0::bigint, 'unrelated buyer cannot see the linked item'
+);
+reset role;
+
+insert into auth.users(id, email) values ('01000000-0000-4000-8000-000000000004', 'role-check@example.test');
+set local role authenticated;
+set local "request.jwt.claim.sub" = '01000000-0000-4000-8000-000000000004';
+select throws_ok(
+  $$select public.freshsave_command('setupProfile','{"role":"retailer","name":"Role check","loc":"bangsar","store":"Test store","address":"100 Test Lane"}')$$,
+  'FS002', 'Retailer accounts are set up by FreshSave.', 'authenticated signup cannot assign the retailer role'
+);
+select lives_ok(
+  $$select public.freshsave_command('setupProfile','{"role":"individual","name":"Role check","loc":"bangsar"}')$$,
+  'authenticated signup can create a buyer profile'
 );
 reset role;
 
